@@ -1,3 +1,41 @@
+# Installation
+### Install esp-idf
+```bash
+yay -S esp-idf #alternatively clone the esp-idf repository from github
+/opt/esp-idf/install.sh
+```
+### Clone this repo
+```
+git clone git@github.com:Jonny999999/gate_fw.git
+```
+
+# Compilation
+### Set up environment
+```
+source /opt/esp-idf/export.sh
+```
+(run once in terminal)
+
+### Compile
+```
+idf.py build
+or
+make
+```
+
+### Upload
+```
+make flash
+```
+
+### Monitor
+```
+make monitor
+```
+
+
+
+
 # Pin assignment
 ## Inputs
 ### Buttons
