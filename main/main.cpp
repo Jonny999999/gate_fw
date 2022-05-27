@@ -1,6 +1,110 @@
 #include <stdio.h>
 
-void app_main(void)
+extern "C"
 {
+#include <esp_system.h>
+#include <esp_event.h>
+#include <nvs_flash.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+#include "sdkconfig.h"
+}
+
+static const char *TAG = "gate ctl";
+
+class gate {
+    public:
+        gate(){
+            ESP_LOGD(TAG, "constructor");
+        }
+
+        //functions
+        void init(void);
+        void handle(void);
+
+        void open();
+        void close();
+        void stop();
+
+        //config
+        gpio_num_t gpio_relayOpen;
+        gpio_num_t gpio_relayClose;
+        gpio_num_t gpio_switchOpen;
+        gpio_num_t gpio_switchClosed;
+        uint32_t ms_open = 10000;
+        uint32_t ms_close = 10000;
+
+        //out
+        enum class gateState {IDLE, OPENING, CLOSING}; //OPEN, CLOSED, TIMEOUT
+        gateState state = gateState::IDLE;
+        float position;
+
+    private:
+};
+
+
+void gate::init(void){
+    ESP_LOGI(TAG, "Initializing gate");
+}
+
+
+void gate::handle(void){
+    ESP_LOGI(TAG, "handle function");
+    switch(state){
+        case gateState::IDLE:
+            
+            break;
+
+        case gateState::OPENING:
+            if (gpio_get_level(gpio_switchOpen) == 1){
+                gpio_set_level(gpio_relayOpen, 0);
+                state = gateState::IDLE;
+            }//TODO elsif timeout, target pos
+            break;
+
+        case gateState::CLOSING:
+            if (gpio_get_level(gpio_switchClosed) == 1){
+                gpio_set_level(gpio_relayClose, 0);
+                state = gateState::IDLE;
+            }//TODO elsif timeout, target pos
+            break;
+    }
+
+}
+
+
+
+
+extern "C" void app_main(void)
+{
+
+    //====================================
+    //====== Create and Configure ========
+    //========== Gate objects ============
+    //====================================
+    //------ right gate ------
+    //create gate object
+    gate gate_right;
+    //define gpio pins
+    gate_right.gpio_relayOpen = GPIO_NUM_2;
+    gate_right.gpio_relayClose = GPIO_NUM_3;
+    gate_right.gpio_switchOpen = GPIO_NUM_4;
+    gate_right.gpio_switchClosed = GPIO_NUM_5;
+    //define parameters
+    gate_right.ms_open = 10000;
+    gate_right.ms_close = 10000;
+
+
+    //initialize gate (define gpio's etc)
+    gate_right.init();
+
+    
+    while (1){
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    gate_right.handle();
+    }
+
 
 }
