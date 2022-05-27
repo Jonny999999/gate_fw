@@ -1,32 +1,39 @@
-# _Sample project_
+# Pin assignment
+## Inputs
+### Buttons
+Buttons in gate and panel switch to 12V
+| Pin | Object | Variable | Description | Wire No (box -> pcb) |
+| --- | --- | --- | --- | --- |
+| 14 |  | GPIO_S_OPEN | S8 Button top [open] | 9 |
+| 27 |  | GPIO_S_CLOSE | S7 Button bottom [close] | 10 |
+| 27 |  |  |  |
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+### Limit switches
+Limit switches switch to 12V
+| Pin | Object | Variable | Description | Wire No (box -> pcb) |
+| --- | --- | --- | --- | --- |
+| 32 |  | GPIO_B_RIGHT_OPEN | S1 right gate(1) open | 14 |
+| 33 |  | GPIO_B_RIGHT_CLOSED | S2 right gate(1) closed | 13 |
+| 25 |  | GPIO_B_LEFT_OPEN | S3 left gate(2) open | 12 |
+| 26 |  | GPIO_B_LEFT_CLOSED | S4 left gate(2) closed | 11 |
+| ? |  | ? | B1 Light beam (not connected) | 3 |
 
-This is the simplest buildable example. The example is used by command `idf.py create-project`
-that copies the project to user specified path and set it's name. For more information follow the [docs page](https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#start-a-new-project)
 
 
+## Outputs
+### Leds, buzzer
+| Pin | Object | Variable | Description |
+| --- | --- | --- | --- |
+| 12 |  |  | Buzzer/LED on the board (select via jumper) |
+| 12 |  |  |  |
 
-## How to use example
-We encourage the users to use the example as a template for the new projects.
-A recommended way is to follow the instructions on a [docs page](https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#start-a-new-project).
+### Relays
+right 5x screw terminal (Servo driver):
+when gpio is high output is switched to gnd
+| Pin | Object | Variable | Description | Wire No (box -> pcb) |
+| --- | --- | --- | --- | --- |
+| 15 |  | GPIO_K_OPEN_RIGHT | ST1 K1 open right gate(1) | 6 |
+| 2 |  | GPIO_K_CLOSE_RIGHT | ST2 K2 close right gate(1) | 5 |
+| 16 |  | GPIO_K_OPEN_LEFT | ST3 K3 open left gate(2) | 4 |
+| 4 |  | GPIO_K_CLOSE_LEFT | ST4 K4 close left gate(2) | 3 |
 
-## Example folder contents
-
-The project **sample_project** contains one source file in C language [main.c](main/main.c). The file is located in folder [main](main).
-
-ESP-IDF projects are built using CMake. The project build configuration is contained in `CMakeLists.txt`
-files that provide set of directives and instructions describing the project's source files and targets
-(executable, library, or both). 
-
-Below is short explanation of remaining files in the project folder.
-
-```
-├── CMakeLists.txt
-├── main
-│   ├── CMakeLists.txt
-│   └── main.c
-└── README.md                  This is the file you are currently reading
-```
-Additionally, the sample project contains Makefile and component.mk files, used for the legacy Make based build system. 
-They are not used or needed when building with CMake and idf.py.
