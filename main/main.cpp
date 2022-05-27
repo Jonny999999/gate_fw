@@ -12,6 +12,8 @@ extern "C"
 #include "sdkconfig.h"
 }
 
+#include "config.hpp"
+
 static const char *TAG = "gate ctl";
 
 class gate {
@@ -77,6 +79,8 @@ void gate::handle(void){
 
 
 
+
+
 extern "C" void app_main(void)
 {
 
@@ -87,11 +91,11 @@ extern "C" void app_main(void)
     //------ right gate ------
     //create gate object
     gate gate_right;
-    //define gpio pins
-    gate_right.gpio_relayOpen = GPIO_NUM_2;
-    gate_right.gpio_relayClose = GPIO_NUM_3;
-    gate_right.gpio_switchOpen = GPIO_NUM_4;
-    gate_right.gpio_switchClosed = GPIO_NUM_5;
+    //define gpio pins (see config.hpp for actual pin number)
+    gate_right.gpio_relayOpen = GPIO_K_OPEN_RIGHT;
+    gate_right.gpio_relayClose = GPIO_K_CLOSE_RIGHT;
+    gate_right.gpio_switchOpen = GPIO_B_RIGHT_OPEN;
+    gate_right.gpio_switchClosed = GPIO_B_RIGHT_CLOSED;
     //define parameters
     gate_right.ms_open = 10000;
     gate_right.ms_close = 10000;
