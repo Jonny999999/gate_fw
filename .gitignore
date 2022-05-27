@@ -1,0 +1,6 @@
+# ESP-IDF default build directory
+build
+
+# VIM files
+*.swp
+*.swo
