@@ -80,6 +80,20 @@ void gate::handle(void){
 
 
 
+uint32_t timestamp_debugOutput = esp_log_timestamp();
+void statusReport(){
+    ESP_LOGI(TAG, "============= STATUS REPORT =============");
+    ESP_LOGI(TAG, "BUTTONS: S8 button_open=%d  |  S7 button_close=%d", gpio_get_level(GPIO_S_OPEN), gpio_get_level(GPIO_S_CLOSE));
+    ESP_LOGI(TAG, "RIGHT GATE: S1 open=%d  |  S2 closed=%d  |  K1 opening=  |  K2 closing=", gpio_get_level(GPIO_B_RIGHT_OPEN), gpio_get_level(GPIO_B_RIGHT_CLOSED));
+    ESP_LOGI(TAG, "LEFT GATE:  S3 open=%d  |  S4 closed=%d  |  K1 opening=?  |  K2 closing=?", gpio_get_level(GPIO_B_LEFT_OPEN), gpio_get_level(GPIO_B_LEFT_CLOSED));
+    ESP_LOGI(TAG, "=========================================");
+    timestamp_debugOutput = esp_log_timestamp();
+}
+
+
+
+
+
 
 extern "C" void app_main(void)
 {
@@ -106,8 +120,14 @@ extern "C" void app_main(void)
 
     
     while (1){
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-    gate_right.handle();
+        vTaskDelay(10 / portTICK_PERIOD_MS); //slight delay is required otherwise watchdog will be triggered
+        //gate_right.handle();
+
+        //show debug output in certain time intervals
+        if (esp_log_timestamp() - timestamp_debugOutput > 5000){
+            statusReport();
+        }
+
     }
 
 
