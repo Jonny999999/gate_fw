@@ -19,18 +19,19 @@ source /opt/esp-idf/export.sh
 ### Compile
 ```
 idf.py build
-or
-make
+~~make~~
 ```
 
 ### Upload
 ```
-make flash
+idf.py flash
+~~make flash~~
 ```
 
 ### Monitor
 ```
-make monitor
+idf.py monitor
+~~make monitor~~
 ```
 
 
