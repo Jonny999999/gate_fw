@@ -5,8 +5,8 @@
 //=========== GPIO Pins ============
 //==================================
 //buttons
-#define GPIO_S_OPEN GPIO_NUM_14
-#define GPIO_S_CLOSE GPIO_NUM_27
+#define GPIO_S_OPEN GPIO_NUM_27
+#define GPIO_S_CLOSE GPIO_NUM_14
 
 //limit switches
 #define GPIO_B_RIGHT_OPEN GPIO_NUM_32

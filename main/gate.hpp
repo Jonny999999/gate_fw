@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdio.h>
+#include <string.h>
 
 extern "C"
 {
@@ -30,6 +31,7 @@ class gate {
                 gpio_num_t gpio_relayClose_f,
                 gpio_num_t gpio_switchOpen_f,
                 gpio_num_t gpio_switchClosed_f,
+                const char name_f[16],
                 uint32_t msTimeout_f = 10000
             );
 
@@ -50,6 +52,7 @@ class gate {
         gpio_num_t gpio_relayClose;
         gpio_num_t gpio_switchOpen;
         gpio_num_t gpio_switchClosed;
+        char name[16];
         uint32_t msTimeout = 10000;
 
         //functions

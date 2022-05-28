@@ -17,7 +17,7 @@ extern "C"
 #include "gate.hpp"
 #include "control.hpp"
 
-static const char *TAG = "gate ctl";
+static const char *TAG = "main";
 
 
 
@@ -78,7 +78,7 @@ extern "C" void app_main(void)
         gateLeft.handle();
 
         //show debug output in certain time intervals
-        if (esp_log_timestamp() - timestamp_debugOutput > 1000){
+        if (esp_log_timestamp() - timestamp_debugOutput > 5000){
             statusReport();
         }
 

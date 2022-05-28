@@ -43,9 +43,9 @@ idf.py monitor
 Buttons in gate and panel switch to 12V
 | Pin | Object | Variable | Description | Wire No (box -> pcb) |
 | --- | --- | --- | --- | --- |
-| 14 |  | GPIO_S_OPEN | S8 Button top [open] | 9 |
-| 27 |  | GPIO_S_CLOSE | S7 Button bottom [close] | 10 |
-| 27 |  |  |  |
+| 27 |  | GPIO_S_OPEN | S8 Button top [open] | 9 |
+| 14 |  | GPIO_S_CLOSE | S7 Button bottom [close] | 10 |
+|  |  |  |  |
 
 ### Limit switches
 Limit switches switch to 12V
