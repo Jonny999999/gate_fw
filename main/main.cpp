@@ -15,6 +15,7 @@ extern "C"
 #include "gpio_evaluateSwitch.hpp"
 #include "config.hpp"
 #include "gate.hpp"
+#include "control.hpp"
 
 static const char *TAG = "gate ctl";
 
@@ -28,6 +29,7 @@ void statusReport(){
     
     ESP_LOGI(TAG, "============= STATUS REPORT =============");
     ESP_LOGI(TAG, "BUTTONS: S8 button_open=%d  |  S7 button_close=%d", buttonOpen.state, buttonClose.state);
+    ESP_LOGI(TAG, "CONTROL: State=%s  |  count=%d  |  lastAction=%d", controlStateStr[(int)ctlState], countPressed, timestampLastAction);
     ESP_LOGI(TAG, "RIGHT GATE: State=%s  |  S1 open=%d  |  S2 closed=%d  |  K1 opening=  |  K2 closing=",
             gateStateStr[(int)gateRight.state], gpio_get_level(GPIO_B_RIGHT_OPEN), gpio_get_level(GPIO_B_RIGHT_CLOSED));
     ESP_LOGI(TAG, "LEFT GATE:  State=%s  |  S3 open=%d  |  S4 closed=%d  |  K1 opening=?  |  K2 closing=?",
@@ -68,11 +70,15 @@ extern "C" void app_main(void)
         }
 
 
+        //run function that handles buttons and controls the gate
+        control();
+
         //run handle function for gates
-        //gate_right.handle();
+        gateRight.handle();
+        gateLeft.handle();
 
         //show debug output in certain time intervals
-        if (esp_log_timestamp() - timestamp_debugOutput > 5000){
+        if (esp_log_timestamp() - timestamp_debugOutput > 1000){
             statusReport();
         }
 

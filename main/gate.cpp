@@ -83,6 +83,12 @@ void gate::stop(){
 }
 
 
+//function to update the target duration the gate should move
+void gate::setDuration(uint32_t msRun_f){
+    msRun = msRun_f;
+}
+
+
 //function with statemachine for a gate
 //(handles limit switches, timeout and target time)
 void gate::handle(void){
