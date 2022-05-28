@@ -1,4 +1,5 @@
 #include "gpio_evaluateSwitch.hpp"
+#include "gate.hpp"
 
 //==================================
 //=========== GPIO Pins ============
@@ -19,9 +20,19 @@
 #define GPIO_K_OPEN_LEFT GPIO_NUM_16
 #define GPIO_K_CLOSE_LEFT GPIO_NUM_4
 
+
 //=========================================
 //=== Create evaluated switch objects =====
 //=========================================
-gpio_evaluatedSwitch buttonOpen(GPIO_S_OPEN, false, true); //pullup false, inverted true (switch to 12V (pulldown on pcb))
-gpio_evaluatedSwitch buttonClose(GPIO_S_CLOSE, false, true); //pullup false, inverted true (switch to 12V (pulldown on pcb))
-                                                             //TODO: evaluate limit switches too?
+extern gpio_evaluatedSwitch buttonOpen;
+extern gpio_evaluatedSwitch buttonClose;
+//TODO: evaluate limit switches too?
+
+
+//========================================
+//============ Gate objects ==============
+//========================================
+extern gate gateRight;
+extern gate gateLeft;
+
+
