@@ -32,10 +32,14 @@ gate::gate(
 void gate::init(void){
     ESP_LOGW(TAG, "Initializing gate %s", name);
     //define relays as outputs
+    gpio_pad_select_gpio(gpio_relayOpen);
     gpio_set_direction(gpio_relayOpen, GPIO_MODE_OUTPUT);
+    gpio_pad_select_gpio(gpio_relayClose);
     gpio_set_direction(gpio_relayClose, GPIO_MODE_OUTPUT);
     //define limit switches as inputs
+    gpio_pad_select_gpio(gpio_switchOpen);
     gpio_set_direction(gpio_switchOpen, GPIO_MODE_INPUT);
+    gpio_pad_select_gpio(gpio_switchClosed);
     gpio_set_direction(gpio_switchClosed, GPIO_MODE_INPUT);
 }
 

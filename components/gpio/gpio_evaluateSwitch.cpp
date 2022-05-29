@@ -1,5 +1,7 @@
 #include "gpio_evaluateSwitch.hpp"
 
+static const char *TAG = "evaluateSwitch";
+
 
 gpio_evaluatedSwitch::gpio_evaluatedSwitch( //minimal (use default values)
         gpio_num_t gpio_num_declare
@@ -28,13 +30,18 @@ gpio_evaluatedSwitch::gpio_evaluatedSwitch( //optional parameters given
 
 
 void gpio_evaluatedSwitch::init(){
-    //define as input
+    ESP_LOGI(TAG, "initializing gpio pin %d", (int)gpio_num);
+
+    //define gpio pin as input
+    gpio_pad_select_gpio(gpio_num);
     gpio_set_direction(gpio_num, GPIO_MODE_INPUT);
 
     if (pullup == true){ //enable pullup if desired (default)
+        gpio_pad_select_gpio(gpio_num);
         gpio_set_pull_mode(gpio_num, GPIO_PULLUP_ONLY);
     }else{
         gpio_set_pull_mode(gpio_num, GPIO_FLOATING);
+        gpio_pad_select_gpio(gpio_num);
     }
     //TODO add pulldown option
     //gpio_set_pull_mode(gpio_num, GPIO_PULLDOWN_ONLY);

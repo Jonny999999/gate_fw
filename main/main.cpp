@@ -45,6 +45,19 @@ void statusReport(){
 
 extern "C" void app_main(void)
 {
+    ESP_LOGI(TAG, "Start of main function...");
+
+    //define buzzer pin as output
+    gpio_pad_select_gpio(GPIO_NUM_12);
+    gpio_set_direction(GPIO_NUM_12, GPIO_MODE_OUTPUT);
+    //beep at startup
+    gpio_set_level(GPIO_NUM_12, 1);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    gpio_set_level(GPIO_NUM_12, 0);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    gpio_set_level(GPIO_NUM_12, 1);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    gpio_set_level(GPIO_NUM_12, 0);
 
 
     while (1){
