@@ -140,17 +140,19 @@ extern "C" void app_main(void)
 
 
         //====== switch to controlling other gate when pressing both buttons ======
-        if (gpio_get_level(GPIO_S_OPEN) == 1 && gpio_get_level(GPIO_S_CLOSE) == 1 && switched == false){
-            //lock
-            switched = true;
-            //invert selected gate
-            gateSelect = !gateSelect;
-            ESP_LOGE(TAG, "==== switched button control to other gate ===== %i", (int)gateSelect);
-            //beep buzzer
-            gpio_set_level(GPIO_NUM_12, 1);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-            gpio_set_level(GPIO_NUM_12, 0);
-        }else{
+        if (gpio_get_level(GPIO_S_OPEN) == 1 && gpio_get_level(GPIO_S_CLOSE) == 1){ //both buttons are pressed
+            if (switched == false){ //not yet switched in this event
+                //lock - dont switch again next cycle
+                switched = true;
+                //invert selected gate
+                gateSelect = !gateSelect;
+                ESP_LOGE(TAG, "==== switched button control to other gate ===== %i", (int)gateSelect);
+                //beep buzzer
+                gpio_set_level(GPIO_NUM_12, 1);
+                vTaskDelay(1000 / portTICK_PERIOD_MS);
+                gpio_set_level(GPIO_NUM_12, 0);
+            }
+        }else{ //both buttons are no longer pressed 
             //release lock
             switched = false;
         }
