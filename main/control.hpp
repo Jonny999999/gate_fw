@@ -48,8 +48,14 @@ void control(){
         //wait for and process additional input
         //(decide what the user wants exactly while the gate already moves)
         case controlState::WAIT_FOR_INPUT:
+            //--- stop ---
+            if (buttonClose.state){ //close button is pressed while waiting for input
+                gateLeft.stop();
+                gateRight.stop();
+                ctlState = controlState::IDLE;
+
             //--- open completely ---
-            if (buttonOpen.fallingEdge && buttonOpen.msPressed > 1000){ //open button was longer than 1s pressed            
+            }else if (buttonOpen.state && buttonOpen.msPressed > 800){ //open button is pressed longer than 800ms
                 ESP_LOGW(TAG_CTL, "Opening completely");
                 ctlState = controlState::MOVING_TO_TARGET;
 
@@ -60,11 +66,11 @@ void control(){
                 timestampLastAction = esp_log_timestamp();
                 
             //--- timeout ---
-            }else if (esp_log_timestamp() - timestampLastAction > 2000){ //no input for more then 2s
+            }else if (esp_log_timestamp() - timestampLastAction > 1200){ //no input for more then 1200ms
                 ESP_LOGW(TAG_CTL, "Timeout - applying target duration");
                 ctlState = controlState::MOVING_TO_TARGET;
-                gateLeft.setDuration(2000*countPressed);
-                gateRight.setDuration(2000*countPressed);
+                gateLeft.setDuration(1200*countPressed);
+                gateRight.setDuration(1200*countPressed);
                 ctlState = controlState::MOVING_TO_TARGET;
             }
             break;
