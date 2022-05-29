@@ -14,8 +14,8 @@ extern "C"
 
 #include "gpio_evaluateSwitch.hpp"
 #include "config.hpp"
-#include "gate.hpp"
-#include "control.hpp"
+//  #include "gate.hpp"
+//  #include "control.hpp"
 
 static const char *TAG = "main";
 
@@ -44,26 +44,59 @@ void controlButtonGate(gpio_num_t gpio_relayOpen, gpio_num_t gpio_relayClose){
     //open
     if (gpio_get_level(GPIO_S_OPEN) == 1){
         gpio_set_level(gpio_relayOpen, 1);
+        ESP_LOGD(TAG, "--- opening relay on");
         //beep when pin is on
         gpio_set_level(GPIO_NUM_12, 1);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
         gpio_set_level(GPIO_NUM_12, 0);
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }else{
         gpio_set_level(gpio_relayOpen, 0);
+        ESP_LOGD(TAG, "--- opening relay off");
     }
     //close
     if (gpio_get_level(GPIO_S_CLOSE) == 1){
         gpio_set_level(gpio_relayClose, 1);
+        ESP_LOGD(TAG, "--- closing relay on");
         //beep when pin is on
         gpio_set_level(GPIO_NUM_12, 1);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
         gpio_set_level(GPIO_NUM_12, 0);
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }else{
         gpio_set_level(gpio_relayClose, 0);
+        ESP_LOGD(TAG, "--- closing relay off");
     }
 }
+
+
+
+//function to initialize gpios (used when not done in gate constructor)
+void initGpio(){
+    //relays
+    gpio_pad_select_gpio(GPIO_K_OPEN_RIGHT);
+    gpio_set_direction(GPIO_K_OPEN_RIGHT, GPIO_MODE_OUTPUT);
+    gpio_pad_select_gpio(GPIO_K_CLOSE_RIGHT);
+    gpio_set_direction(GPIO_K_CLOSE_RIGHT, GPIO_MODE_OUTPUT);
+    gpio_pad_select_gpio(GPIO_K_OPEN_LEFT);
+    gpio_set_direction(GPIO_K_OPEN_LEFT, GPIO_MODE_OUTPUT);
+    gpio_pad_select_gpio(GPIO_K_CLOSE_LEFT);
+    gpio_set_direction(GPIO_K_CLOSE_LEFT, GPIO_MODE_OUTPUT);
+    //limit switches
+    gpio_pad_select_gpio(GPIO_B_RIGHT_OPEN);
+    gpio_set_direction(GPIO_B_RIGHT_OPEN, GPIO_MODE_INPUT);
+    gpio_pad_select_gpio(GPIO_B_RIGHT_CLOSED);
+    gpio_set_direction(GPIO_B_RIGHT_CLOSED, GPIO_MODE_INPUT);
+    gpio_pad_select_gpio(GPIO_B_LEFT_OPEN);
+    gpio_set_direction(GPIO_B_LEFT_OPEN, GPIO_MODE_INPUT);
+    gpio_pad_select_gpio(GPIO_B_LEFT_CLOSED);
+    gpio_set_direction(GPIO_B_LEFT_CLOSED, GPIO_MODE_INPUT);
+    //buzzer/led
+    gpio_pad_select_gpio(12);
+    gpio_set_direction(GPIO_NUM_12, GPIO_MODE_OUTPUT);
+}
+
+
 
 
 extern "C" void app_main(void)
@@ -76,6 +109,9 @@ extern "C" void app_main(void)
     bool gateSelect = false;
     bool switched = false;
 
+
+    //define gpio pins as inputs/outputs
+    initGpio();
 
 
     while (1){
@@ -109,6 +145,7 @@ extern "C" void app_main(void)
             switched = true;
             //invert selected gate
             gateSelect = !gateSelect;
+            ESP_LOGE(TAG, "==== switched button control to other gate ===== %i", (int)gateSelect);
             //beep buzzer
             gpio_set_level(GPIO_NUM_12, 1);
             vTaskDelay(1000 / portTICK_PERIOD_MS);

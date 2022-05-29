@@ -32,7 +32,7 @@ extern gpio_evaluatedSwitch buttonClose;
 //========================================
 //============ Gate objects ==============
 //========================================
-extern gate gateRight;
-extern gate gateLeft;
+//      extern gate gateRight;
+//      extern gate gateLeft;
 
 
