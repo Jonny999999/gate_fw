@@ -1,12 +1,16 @@
 #include "gate.hpp"
 
-//tag for logging
+//individual tag for logging
 static const char *TAG = "gate";
 
 //definition of string array to be able to convert state enum to readable string
 const char* gateStateStr[3] = { "IDLE", "OPENING", "CLOSING" }; 
 
-//constructor
+
+//=============================
+//======== constructor ========
+//=============================
+//copy provided config parameters to private variables, run init function
 gate::gate(
         gpio_num_t gpio_relayOpen_f,
         gpio_num_t gpio_relayClose_f,
@@ -28,14 +32,19 @@ gate::gate(
 }
 
 
+//============================
+//========== init ============
+//============================
 //function to initialize the gpio pins
 void gate::init(void){
     ESP_LOGW(TAG, "Initializing gate %s", name);
+
     //define relays as outputs
     gpio_pad_select_gpio(gpio_relayOpen);
     gpio_set_direction(gpio_relayOpen, GPIO_MODE_OUTPUT);
     gpio_pad_select_gpio(gpio_relayClose);
     gpio_set_direction(gpio_relayClose, GPIO_MODE_OUTPUT);
+
     //define limit switches as inputs
     gpio_pad_select_gpio(gpio_switchOpen);
     gpio_set_direction(gpio_switchOpen, GPIO_MODE_INPUT);
@@ -44,7 +53,10 @@ void gate::init(void){
 }
 
 
-//function to start opening the gate
+//============================
+//=========== open ===========
+//============================
+//function to start opening the gate for specified duration
 void gate::open(uint32_t msRun_f){
     ESP_LOGW(TAG, "=> Opening gate %s", name);
     if (state == gateState::IDLE){
@@ -61,7 +73,10 @@ void gate::open(uint32_t msRun_f){
 }
 
 
-//function to start closing the gate
+//=============================
+//=========== close ===========
+//=============================
+//function to start closing the gate for specified duration
 void gate::close(uint32_t msRun_f){
     ESP_LOGW(TAG, "=> Closing gate %s", name);
     if (state == gateState::IDLE){
@@ -78,6 +93,9 @@ void gate::close(uint32_t msRun_f){
 }
 
 
+//============================
+//=========== stop ===========
+//============================
 //function to stop the gate
 void gate::stop(){
     ESP_LOGW(TAG, "=> Stopping gate %s", name);
@@ -85,51 +103,76 @@ void gate::stop(){
     //turn off both relays
     gpio_set_level(gpio_relayClose, 0);
     gpio_set_level(gpio_relayOpen, 0);
-
+    
     state = gateState::IDLE;
 }
 
 
+//=============================
+//======== setDuration ========
+//=============================
 //function to update the target duration the gate should move
 void gate::setDuration(uint32_t msRun_f){
     msRun = msRun_f;
 }
 
 
+//=============================
+//=========== handle  =========
+//======== statemachine =======
+//=============================
 //function with statemachine for a gate
-//(handles limit switches, timeout and target time)
+//handles limit switches, timeout and target time
 void gate::handle(void){
     ESP_LOGV(TAG, "handle function %s", name);
     switch(state){
+        //------------------
+        //----- idle -------
+        //------------------
         case gateState::IDLE:
             //do nothig, wait for function open() or close() to be called
             break;
 
+        //-------------------
+        //----- opening -----
+        //-------------------
         case gateState::OPENING:
-            if (esp_log_timestamp() - timestampStart > msRun){ //target run duration exceeded
+            //--- target duration exceeded ---
+            if (esp_log_timestamp() - timestampStart > msRun){
                 ESP_LOGE(TAG, "Duration-reached gate %s", name);
                 stop();
-            }else if (gpio_get_level(gpio_switchOpen) == 1){ //limit switch (completely open)
+
+            //--- limit switch ---
+            }else if (gpio_get_level(gpio_switchOpen) == 1){
                 ESP_LOGE(TAG, "LIMIT-SWITCH gate %s", name);
                 stop();
-            }else if (esp_log_timestamp() - timestampStart > msTimeout){ //timeout
+
+            //--- timeout ---
+            }else if (esp_log_timestamp() - timestampStart > msTimeout){
                 ESP_LOGE(TAG, "TIMEOUT gate %s", name);
                 stop();
             }
             break;
 
+        //-------------------
+        //----- closing -----
+        //-------------------
         case gateState::CLOSING:
-            if (esp_log_timestamp() - timestampStart > msRun){ //target run duration exceeded
+            //--- target duration exceeded ---
+            if (esp_log_timestamp() - timestampStart > msRun){
                 ESP_LOGE(TAG, "Duration-reached gate %s", name);
                 stop();
-            }else if (gpio_get_level(gpio_switchClosed) == 1){ //limit switch (completely closed)
+
+            //--- limit switch ---
+            }else if (gpio_get_level(gpio_switchClosed) == 1){
                 ESP_LOGE(TAG, "LIMIT-SWITCH gate %s", name);
                 stop();
-            }else if (esp_log_timestamp() - timestampStart > msTimeout){ //timeout
+
+            //--- timeout ---
+            }else if (esp_log_timestamp() - timestampStart > msTimeout){
                 ESP_LOGE(TAG, "TIMEOUT gate %s", name);
                 stop();
             }
-
             break;
     }
 }

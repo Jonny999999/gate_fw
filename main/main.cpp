@@ -24,6 +24,8 @@ static const char *TAG = "main";
 //==================================
 //===== statusReport function ======
 //==================================
+//function for debugging that prints several global variables and gpio states
+//to get an overview of the current system state
 uint32_t timestamp_debugOutput = esp_log_timestamp();
 void statusReport(){
     
@@ -42,14 +44,22 @@ void statusReport(){
 
 
 
-
+//=================================
+//=========== app_main ============
+//=================================
+//main function that gets run at startup
 extern "C" void app_main(void)
 {
+    //------------------------------
+    //------ startup commands ------
+    //------------------------------
+    //commands run once at controller startup
     ESP_LOGI(TAG, "Start of main function...");
 
     //define buzzer pin as output
     gpio_pad_select_gpio(GPIO_NUM_12);
     gpio_set_direction(GPIO_NUM_12, GPIO_MODE_OUTPUT);
+
     //beep at startup
     gpio_set_level(GPIO_NUM_12, 1);
     vTaskDelay(200 / portTICK_PERIOD_MS);
@@ -60,15 +70,36 @@ extern "C" void app_main(void)
     gpio_set_level(GPIO_NUM_12, 0);
 
 
+
+    //-----------------------------
+    //--------- main loop ---------
+    //-----------------------------
     while (1){
         vTaskDelay(10 / portTICK_PERIOD_MS); //slight delay is required otherwise watchdog will be triggered
         
+
+        //-----------------------------
+        //------- run functions -------
+        //-----------------------------
+        //periodicly run all functions required for controlling the gates
+
         //run handle function for buttons TODO: run these in another task?
-        //note: the switch objects are declared and configured in config.hpp
         buttonOpen.handle();
         buttonClose.handle();
+        //note: the switch objects are declared in config.hpp and configured in config.cpp
+
+        //run function that processes buttons and controls the gate
+        control();
+
+        //run handle function for gates
+        gateRight.handle();
+        gateLeft.handle();
+        //note: gates are declared in config.hpp and configured in config.cpp
 
 
+        //----------------------------
+        //------- debug output -------
+        //----------------------------
         //testing evaluated switch - log button events
         if (buttonOpen.risingEdge){
             ESP_LOGI(TAG, "== Button open pressed == - time Released: %d", buttonOpen.msReleased);
@@ -82,20 +113,13 @@ extern "C" void app_main(void)
             ESP_LOGI(TAG, "== Button close released == - time Pressed: %d", buttonClose.msPressed);
         }
 
-
-        //run function that handles buttons and controls the gate
-        control();
-
-        //run handle function for gates
-        gateRight.handle();
-        gateLeft.handle();
-
         //show debug output in certain time intervals
         if (esp_log_timestamp() - timestamp_debugOutput > 5000){
             statusReport();
         }
 
-    }
 
 
-}
+    }//end while(1)
+
+}//end app_main

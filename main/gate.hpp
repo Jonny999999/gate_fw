@@ -15,7 +15,10 @@ extern "C"
 
 //declaration of enum for gate state
 enum class gateState {IDLE, OPENING, CLOSING}; //OPEN, CLOSED, TIMEOUT
-extern const char* gateStateStr[3]; //string array for printing the state as string, defined in gate.cpp (e.g. gateStateStr[(int)gateRight.state])
+ 
+//string array for printing the state as string
+//defined in gate.cpp (e.g. gateStateStr[(int)gateRight.state])
+extern const char* gateStateStr[3]; 
 
 
 
@@ -25,7 +28,7 @@ extern const char* gateStateStr[3]; //string array for printing the state as str
 //class which controls a gate with 2 relays and 2 limit switches
 class gate {
     public:
-        //constructor
+        //--- constructor ---
         gate(
                 gpio_num_t gpio_relayOpen_f,
                 gpio_num_t gpio_relayClose_f,
@@ -35,19 +38,19 @@ class gate {
                 uint32_t msTimeout_f = 10000
             );
 
-        //functions
+        //--- functions ---
         void handle(void);
         void open(uint32_t msRun_t);
         void close(uint32_t msRun_t);
         void stop();
         void setDuration(uint32_t msRun_f);
 
-        //out
+        //--- out ---
         gateState state = gateState::IDLE;
         //float position;
 
     private:
-        //configuration
+        //--- configuration ---
         gpio_num_t gpio_relayOpen;
         gpio_num_t gpio_relayClose;
         gpio_num_t gpio_switchOpen;
@@ -55,10 +58,10 @@ class gate {
         char name[16];
         uint32_t msTimeout = 10000;
 
-        //functions
+        //--- functions ---
         void init(void);
 
-        //process variables
+        //--- process variables ---
         uint32_t timestampStart;
         uint32_t timestampStop;
         uint32_t msRun;
