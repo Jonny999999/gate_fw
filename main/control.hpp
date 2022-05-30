@@ -24,7 +24,8 @@ void control(){
         //--------------------
         //wait for initial user input
         case controlState::IDLE:
-            //--- close gate ---
+            //--- button close ---
+            //close gates completely
             if (buttonClose.risingEdge){
                 ESP_LOGW(TAG_CTL, "Closing completely");
                 buzzer.beep(1, 1000, 0);
@@ -32,7 +33,8 @@ void control(){
                 gateRight.close(20000);
                 ctlState = controlState::MOVING_TO_TARGET;
 
-            //--- open gate ---
+            //--- button open ---
+            //open, wait for further input
             }else if (buttonOpen.risingEdge){
                 ESP_LOGW(TAG_CTL, "Opening (waiting for further input)");
                 buzzer.beep(1, 100, 0);
@@ -41,6 +43,25 @@ void control(){
                 countPressed = 1;
                 timestampLastAction = esp_log_timestamp();
                 ctlState = controlState::WAIT_FOR_INPUT;
+            
+
+            //--- remote close ---
+            //close gates completely
+            }else if (remoteClose.risingEdge){
+                ESP_LOGW(TAG_CTL, "REMOTE: Closing completely");
+                buzzer.beep(2, 1500, 100);
+                gateLeft.close(20000);
+                gateRight.close(20000);
+                ctlState = controlState::MOVING_TO_TARGET;
+
+            //--- remote open ---
+            //open gates completely
+            }else if (remoteOpen.risingEdge){
+                ESP_LOGW(TAG_CTL, "REMOTE: Opening completely");
+                buzzer.beep(1, 1500, 0);
+                gateLeft.open(20000);
+                gateRight.open(20000);//FIXME: provide value that makes more sense
+                ctlState = controlState::MOVING_TO_TARGET;
             }
             break;
 
@@ -97,8 +118,10 @@ void control(){
                 ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
                 ctlState = controlState::IDLE;
 
-            //--- stop with any button ---
-            }else if (buttonClose.risingEdge || buttonOpen.risingEdge){ //any button is pressed while moving to target
+            //--- stop with any user input ---
+            }else if (buttonClose.risingEdge || buttonOpen.risingEdge
+                    || remoteOpen.risingEdge || remoteClose.risingEdge
+                ){ //any remote input or button is pressed while moving to target
                 //stop gates
                 gateLeft.stop(stopReason::CANCEL);
                 gateRight.stop(stopReason::CANCEL);
