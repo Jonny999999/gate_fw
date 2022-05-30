@@ -17,6 +17,8 @@ extern "C"
 #include "gate.hpp"
 #include "control.hpp"
 
+#include "buzzer.hpp"
+
 static const char *TAG = "main";
 
 
@@ -41,6 +43,17 @@ void statusReport(){
 }
 
 
+//======================================
+//============ buzzer task =============
+//======================================
+//TODO: move the task creation to buzzer class (buzzer.cpp)
+//e.g. only have function buzzer.createTask() in app_main
+void task_buzzer( void * pvParameters ){
+    ESP_LOGI("task_buzzer", "Start of buzzer task...");
+        //run function that waits for a beep events to arrive in the queue
+        //and processes them
+        buzzer.processQueue();
+}
 
 
 
@@ -50,30 +63,30 @@ void statusReport(){
 //main function that gets run at startup
 extern "C" void app_main(void)
 {
-    //------------------------------
-    //------ startup commands ------
-    //------------------------------
+    //==============================
+    //====== startup commands ======
+    //==============================
     //commands run once at controller startup
     ESP_LOGI(TAG, "Start of main function...");
 
-    //define buzzer pin as output
-    gpio_pad_select_gpio(GPIO_NUM_12);
-    gpio_set_direction(GPIO_NUM_12, GPIO_MODE_OUTPUT);
+    //------------------------------
+    //--- create task for buzzer ---
+    //------------------------------
+    xTaskCreate(&task_buzzer, "task_buzzer", 2048, NULL, 5, NULL);
 
     //beep at startup
-    gpio_set_level(GPIO_NUM_12, 1);
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-    gpio_set_level(GPIO_NUM_12, 0);
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-    gpio_set_level(GPIO_NUM_12, 1);
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-    gpio_set_level(GPIO_NUM_12, 0);
-
-
+    buzzer.beep(3, 50, 100);
 
     //-----------------------------
-    //--------- main loop ---------
+    //--------- variables ---------
     //-----------------------------
+    //count for testing beep class
+    //int count = 2;
+
+
+    //=============================
+    //========= main loop =========
+    //=============================
     while (1){
         vTaskDelay(10 / portTICK_PERIOD_MS); //slight delay is required otherwise watchdog will be triggered
         
@@ -89,7 +102,7 @@ extern "C" void app_main(void)
         //note: the switch objects are declared in config.hpp and configured in config.cpp
 
         //run function that processes buttons and controls the gate
-        control();
+                //control();
 
         //run handle function for gates
         gateRight.handle();
@@ -103,6 +116,9 @@ extern "C" void app_main(void)
         //testing evaluated switch - log button events
         if (buttonOpen.risingEdge){
             ESP_LOGI(TAG, "== Button open pressed == - time Released: %d", buttonOpen.msReleased);
+            //test beep class:
+            //buzzer.beep(count, buttonOpen.msPressed, 500);
+            //count++;
         }else if (buttonOpen.fallingEdge){
             ESP_LOGI(TAG, "== Button open released == - time Pressed: %d", buttonOpen.msPressed);
         }
@@ -115,7 +131,7 @@ extern "C" void app_main(void)
 
         //show debug output in certain time intervals
         if (esp_log_timestamp() - timestamp_debugOutput > 5000){
-            statusReport();
+                    //statusReport();
         }
 
 

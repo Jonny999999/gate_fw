@@ -1,5 +1,6 @@
 #include "gpio_evaluateSwitch.hpp"
 #include "gate.hpp"
+#include "buzzer.hpp"
 
 //==================================
 //=========== GPIO Pins ============
@@ -34,5 +35,7 @@ extern gpio_evaluatedSwitch buttonClose;
 //========================================
 extern gate gateRight;
 extern gate gateLeft;
+
+extern buzzer_t buzzer;
 
 
