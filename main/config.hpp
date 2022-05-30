@@ -9,6 +9,9 @@
 #define GPIO_S_OPEN GPIO_NUM_27
 #define GPIO_S_CLOSE GPIO_NUM_14
 
+#define GPIO_S_REMOTE_OPEN GPIO_NUM_36
+#define GPIO_S_REMOTE_CLOSE GPIO_NUM_39
+
 //limit switches
 #define GPIO_B_RIGHT_OPEN GPIO_NUM_32
 #define GPIO_B_RIGHT_CLOSED GPIO_NUM_33
@@ -22,11 +25,16 @@
 #define GPIO_K_CLOSE_LEFT GPIO_NUM_4
 
 
+
 //=========================================
 //=== Create evaluated switch objects =====
 //=========================================
+//buttons
 extern gpio_evaluatedSwitch buttonOpen;
 extern gpio_evaluatedSwitch buttonClose;
+//remote receiver
+extern gpio_evaluatedSwitch remoteOpen;
+extern gpio_evaluatedSwitch remoteClose;
 //TODO: evaluate limit switches too?
 
 

@@ -4,8 +4,12 @@
 //====== Configure evaluated switches ======
 //==========================================
 //TODO: evaluate limit switches too?
+//buttons
 gpio_evaluatedSwitch buttonOpen(GPIO_S_OPEN, false, true); //pullup false, inverted true (switch to 12V (pulldown on pcb))
 gpio_evaluatedSwitch buttonClose(GPIO_S_CLOSE, false, true); //pullup false, inverted true (switch to 12V (pulldown on pcb))
+//remote
+gpio_evaluatedSwitch remoteOpen(GPIO_S_REMOTE_OPEN, false, true);
+gpio_evaluatedSwitch remoteClose(GPIO_S_REMOTE_CLOSE, false, true);
 
 
 //====================================

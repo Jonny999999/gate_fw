@@ -40,12 +40,14 @@ idf.py monitor
 # Pin assignment
 ## Inputs
 ### Buttons
-Buttons in gate and panel switch to 12V
+Buttons in gate and panel, remote receiver switch to 12V
 | Pin | Object | Variable | Description | Wire No (box -> pcb) |
 | --- | --- | --- | --- | --- |
-| 27 |  | GPIO_S_OPEN | S8 Button top [open] | 9 |
-| 14 |  | GPIO_S_CLOSE | S7 Button bottom [close] | 10 |
+| 27 | buttonOpen | GPIO_S_OPEN | S8 Button top [open] | 9 |
+| 14 | buttonClose | GPIO_S_CLOSE | S7 Button bottom [close] | 10 |
 |  |  |  |  |
+| 36 | remoteOpen | GPIO_S_REMOTE_OPEN | Remote receiver [open] |
+| 39 | remoteClose | GPIO_S_REMOTE_CLOSE | Remote receiver [close] |
 
 ### Limit switches
 Limit switches switch to 12V

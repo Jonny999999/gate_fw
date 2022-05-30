@@ -96,9 +96,13 @@ extern "C" void app_main(void)
         //-----------------------------
         //periodicly run all functions required for controlling the gates
 
-        //run handle function for buttons TODO: run these in another task?
+        //run handle function for evaluated switches TODO: run these in another task?
+        //buttons
         buttonOpen.handle();
         buttonClose.handle();
+        //remote
+        remoteOpen.handle();
+        remoteClose.handle();
         //note: the switch objects are declared in config.hpp and configured in config.cpp
 
         //run function that processes buttons and controls the gate
@@ -128,6 +132,25 @@ extern "C" void app_main(void)
         }else if (buttonClose.fallingEdge){
             ESP_LOGI(TAG, "== Button close released == - time Pressed: %d", buttonClose.msPressed);
         }
+
+
+        //testing remote receiver inputs  - log events
+        if (remoteOpen.risingEdge){
+            ESP_LOGW(TAG, "== Remote open high== - time Released: %d", remoteOpen.msReleased);
+            buzzer.beep(1, 300, 0);
+        }else if (remoteOpen.fallingEdge){
+            ESP_LOGW(TAG, "== Remote open low == - time Pressed: %d", remoteOpen.msPressed);
+        }
+
+        if (remoteClose.risingEdge){
+            ESP_LOGW(TAG, "== Remote close high == - time Released: %d", remoteClose.msReleased);
+            buzzer.beep(2, 100, 0);
+        }else if (remoteClose.fallingEdge){
+            ESP_LOGW(TAG, "== Remote close low == - time Pressed: %d", remoteClose.msPressed);
+        }
+
+
+
 
         //show debug output in certain time intervals
         if (esp_log_timestamp() - timestamp_debugOutput > 5000){
