@@ -102,7 +102,7 @@ extern "C" void app_main(void)
         //note: the switch objects are declared in config.hpp and configured in config.cpp
 
         //run function that processes buttons and controls the gate
-                //control();
+        control();
 
         //run handle function for gates
         gateRight.handle();

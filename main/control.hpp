@@ -66,17 +66,21 @@ void control(){
             //--- increment open duration ---
             }else if (buttonOpen.risingEdge){ //open button high again
                 ESP_LOGI(TAG_CTL, "Incrementing open duration - total: %d", countPressed);
-                buzzer.beep(1, 100, 0);
+                buzzer.beep(1, 60, 0);
                 countPressed++;
                 timestampLastAction = esp_log_timestamp();
                 
             //--- timeout ---
-            }else if (esp_log_timestamp() - timestampLastAction > 1200){ //no input for more then 1200ms
+            }else if (esp_log_timestamp() - timestampLastAction > 1000){ //no input for more than 1200ms
                 ESP_LOGW(TAG_CTL, "Timeout - applying target duration");
                 ctlState = controlState::MOVING_TO_TARGET;
-                gateLeft.setDuration(1200*countPressed);
-                gateRight.setDuration(1200*countPressed);
-                buzzer.beep(2, 50, 50);
+                //TODO use percentage calculated with openDuration from config instead of ms duration
+                gateLeft.setDuration( 1100 + (500 * countPressed) );
+                gateRight.setDuration( 1100 + (500 * countPressed) );
+                if(countPressed > 1){
+                    //signal that input has been applied
+                    buzzer.beep(2, 50, 30);
+                }
                 ctlState = controlState::MOVING_TO_TARGET;
             }
             break;
@@ -99,6 +103,7 @@ void control(){
                 gateLeft.stop(stopReason::CANCEL);
                 gateRight.stop(stopReason::CANCEL);
                 ctlState = controlState::IDLE;
+                buzzer.beep(1, 400, 0);
             }
             break;
     }

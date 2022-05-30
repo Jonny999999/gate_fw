@@ -22,4 +22,4 @@ gate gateLeft(GPIO_K_OPEN_LEFT, GPIO_K_CLOSE_LEFT, GPIO_B_LEFT_OPEN, GPIO_B_LEFT
 //note: actual gpio pins are defined globally in config.hpp
 
 //create buzzer object on pin 12 with gap between queued events of 500ms 
-buzzer_t buzzer(GPIO_NUM_12, 200);
+buzzer_t buzzer(GPIO_NUM_12, 100);

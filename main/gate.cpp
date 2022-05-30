@@ -110,19 +110,18 @@ void gate::stop(stopReason reason){
     switch(reason){
         case stopReason::REACHED:
             ESP_LOGE(TAG, "Stopped gate %s - target reached", name);
-            buzzer.beep(2, 100, 100);
+            buzzer.beep(2, 60, 50);
             break;
         case stopReason::LIMIT:
             ESP_LOGE(TAG, "Stopped gate %s - limit reached", name);
-            buzzer.beep(3, 100, 100);
+            buzzer.beep(3, 60, 50);
             break;
         case stopReason::TIMEOUT:
             ESP_LOGE(TAG, "Stopped gate %s - timeout!", name);
-            buzzer.beep(4, 500, 100);
+            buzzer.beep(4, 300, 100);
             break;
         case stopReason::CANCEL:
             ESP_LOGE(TAG, "Stopped gate %s via button!", name);
-            buzzer.beep(1, 200, 100);
             break;
     }
 }
