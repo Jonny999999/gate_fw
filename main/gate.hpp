@@ -15,6 +15,8 @@ extern "C"
 
 //declaration of enum for gate state
 enum class gateState {IDLE, OPENING, CLOSING}; //OPEN, CLOSED, TIMEOUT
+//declaration of enum to tell stop function why the gate was stopped (for notifications)
+enum class stopReason {REACHED, LIMIT, TIMEOUT, CANCEL};
  
 //string array for printing the state as string
 //defined in gate.cpp (e.g. gateStateStr[(int)gateRight.state])
@@ -42,7 +44,7 @@ class gate {
         void handle(void);
         void open(uint32_t msRun_t);
         void close(uint32_t msRun_t);
-        void stop();
+        void stop(stopReason reason);
         void setDuration(uint32_t msRun_f);
 
         //--- out ---

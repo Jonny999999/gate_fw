@@ -1,3 +1,4 @@
+#include "config.hpp"
 
 //--- variable declarations ---
 const char* controlStateStr[3] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET"};
@@ -26,6 +27,7 @@ void control(){
             //--- close gate ---
             if (buttonClose.risingEdge){
                 ESP_LOGW(TAG_CTL, "Closing completely");
+                buzzer.beep(1, 1000, 0);
                 gateLeft.close(20000);
                 gateRight.close(20000);
                 ctlState = controlState::MOVING_TO_TARGET;
@@ -33,6 +35,7 @@ void control(){
             //--- open gate ---
             }else if (buttonOpen.risingEdge){
                 ESP_LOGW(TAG_CTL, "Opening (waiting for further input)");
+                buzzer.beep(1, 100, 0);
                 gateLeft.open(20000);
                 gateRight.open(20000);//FIXME: provide value that makes more sense
                 countPressed = 1;
@@ -50,18 +53,20 @@ void control(){
         case controlState::WAIT_FOR_INPUT:
             //--- stop ---
             if (buttonClose.state){ //close button is pressed while waiting for input
-                gateLeft.stop();
-                gateRight.stop();
+                gateLeft.stop(stopReason::CANCEL);
+                gateRight.stop(stopReason::CANCEL);
                 ctlState = controlState::IDLE;
 
             //--- open completely ---
             }else if (buttonOpen.state && buttonOpen.msPressed > 800){ //open button is pressed longer than 800ms
                 ESP_LOGW(TAG_CTL, "Opening completely");
+                buzzer.beep(1, 1000, 0);
                 ctlState = controlState::MOVING_TO_TARGET;
 
             //--- increment open duration ---
             }else if (buttonOpen.risingEdge){ //open button high again
                 ESP_LOGI(TAG_CTL, "Incrementing open duration - total: %d", countPressed);
+                buzzer.beep(1, 100, 0);
                 countPressed++;
                 timestampLastAction = esp_log_timestamp();
                 
@@ -71,6 +76,7 @@ void control(){
                 ctlState = controlState::MOVING_TO_TARGET;
                 gateLeft.setDuration(1200*countPressed);
                 gateRight.setDuration(1200*countPressed);
+                buzzer.beep(2, 50, 50);
                 ctlState = controlState::MOVING_TO_TARGET;
             }
             break;
@@ -84,15 +90,14 @@ void control(){
         case controlState::MOVING_TO_TARGET:
             //--- idle when gates stopped at target or timeout ---
             if (gateLeft.state == gateState::IDLE && gateRight.state == gateState::IDLE){ //both do not move
-                ESP_LOGW(TAG_CTL, "Done - both gates have stopped");
+                ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
                 ctlState = controlState::IDLE;
 
             //--- stop with any button ---
             }else if (buttonClose.risingEdge || buttonOpen.risingEdge){ //any button is pressed while moving to target
-                ESP_LOGE(TAG_CTL, "Stopped via button!");
                 //stop gates
-                gateLeft.stop();
-                gateRight.stop();
+                gateLeft.stop(stopReason::CANCEL);
+                gateRight.stop(stopReason::CANCEL);
                 ctlState = controlState::IDLE;
             }
             break;

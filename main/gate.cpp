@@ -1,4 +1,5 @@
 #include "gate.hpp"
+#include "config.hpp"
 
 //individual tag for logging
 static const char *TAG = "gate";
@@ -97,14 +98,33 @@ void gate::close(uint32_t msRun_f){
 //=========== stop ===========
 //============================
 //function to stop the gate
-void gate::stop(){
-    ESP_LOGW(TAG, "=> Stopping gate %s", name);
+void gate::stop(stopReason reason){
     timestampStop = esp_log_timestamp();
     //turn off both relays
     gpio_set_level(gpio_relayClose, 0);
     gpio_set_level(gpio_relayOpen, 0);
-    
+
     state = gateState::IDLE;
+
+    //send notifications according to stop reason
+    switch(reason){
+        case stopReason::REACHED:
+            ESP_LOGE(TAG, "Stopped gate %s - target reached", name);
+            buzzer.beep(2, 100, 100);
+            break;
+        case stopReason::LIMIT:
+            ESP_LOGE(TAG, "Stopped gate %s - limit reached", name);
+            buzzer.beep(3, 100, 100);
+            break;
+        case stopReason::TIMEOUT:
+            ESP_LOGE(TAG, "Stopped gate %s - timeout!", name);
+            buzzer.beep(4, 500, 100);
+            break;
+        case stopReason::CANCEL:
+            ESP_LOGE(TAG, "Stopped gate %s via button!", name);
+            buzzer.beep(1, 200, 100);
+            break;
+    }
 }
 
 
@@ -140,17 +160,17 @@ void gate::handle(void){
             //--- target duration exceeded ---
             if (esp_log_timestamp() - timestampStart > msRun){
                 ESP_LOGE(TAG, "Duration-reached gate %s", name);
-                stop();
+                stop(stopReason::REACHED);
 
             //--- limit switch ---
             }else if (gpio_get_level(gpio_switchOpen) == 1){
                 ESP_LOGE(TAG, "LIMIT-SWITCH gate %s", name);
-                stop();
+                stop(stopReason::LIMIT);
 
             //--- timeout ---
             }else if (esp_log_timestamp() - timestampStart > msTimeout){
                 ESP_LOGE(TAG, "TIMEOUT gate %s", name);
-                stop();
+                stop(stopReason::TIMEOUT);
             }
             break;
 
@@ -161,17 +181,17 @@ void gate::handle(void){
             //--- target duration exceeded ---
             if (esp_log_timestamp() - timestampStart > msRun){
                 ESP_LOGE(TAG, "Duration-reached gate %s", name);
-                stop();
+                stop(stopReason::REACHED);
 
             //--- limit switch ---
             }else if (gpio_get_level(gpio_switchClosed) == 1){
                 ESP_LOGE(TAG, "LIMIT-SWITCH gate %s", name);
-                stop();
+                stop(stopReason::LIMIT);
 
             //--- timeout ---
             }else if (esp_log_timestamp() - timestampStart > msTimeout){
                 ESP_LOGE(TAG, "TIMEOUT gate %s", name);
-                stop();
+                stop(stopReason::TIMEOUT);
             }
             break;
     }
