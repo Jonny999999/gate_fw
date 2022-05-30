@@ -40,7 +40,7 @@ void control(){
                 buzzer.beep(1, 100, 0);
                 gateLeft.open(20000);
                 gateRight.open(20000);//FIXME: provide value that makes more sense
-                countPressed = 1;
+                countPressed = 0; //reset count
                 timestampLastAction = esp_log_timestamp();
                 ctlState = controlState::WAIT_FOR_INPUT;
             
@@ -49,7 +49,7 @@ void control(){
             //close gates completely
             }else if (remoteClose.risingEdge){
                 ESP_LOGW(TAG_CTL, "REMOTE: Closing completely");
-                buzzer.beep(2, 1500, 100);
+                buzzer.beep(2, 500, 100);
                 gateLeft.close(20000);
                 gateRight.close(20000);
                 ctlState = controlState::MOVING_TO_TARGET;
@@ -58,7 +58,7 @@ void control(){
             //open gates completely
             }else if (remoteOpen.risingEdge){
                 ESP_LOGW(TAG_CTL, "REMOTE: Opening completely");
-                buzzer.beep(1, 1500, 0);
+                buzzer.beep(1, 1000, 0);
                 gateLeft.open(20000);
                 gateRight.open(20000);//FIXME: provide value that makes more sense
                 ctlState = controlState::MOVING_TO_TARGET;
@@ -77,6 +77,7 @@ void control(){
                 gateLeft.stop(stopReason::CANCEL);
                 gateRight.stop(stopReason::CANCEL);
                 ctlState = controlState::IDLE;
+                buzzer.beep(1, 400, 0);
 
             //--- open completely ---
             }else if (buttonOpen.state && buttonOpen.msPressed > 800){ //open button is pressed longer than 800ms
@@ -92,15 +93,15 @@ void control(){
                 timestampLastAction = esp_log_timestamp();
                 
             //--- timeout ---
-            }else if (esp_log_timestamp() - timestampLastAction > 1000){ //no input for more than 1200ms
+            }else if (esp_log_timestamp() - timestampLastAction > 900){ //no input for more than 1200ms
                 ESP_LOGW(TAG_CTL, "Timeout - applying target duration");
                 ctlState = controlState::MOVING_TO_TARGET;
                 //TODO use percentage calculated with openDuration from config instead of ms duration
-                gateLeft.setDuration( 1100 + (500 * countPressed) );
-                gateRight.setDuration( 1100 + (500 * countPressed) );
+                gateLeft.setDuration( 1100 + (400 * countPressed) );
+                gateRight.setDuration( 1100 + (400 * countPressed) );
                 if(countPressed > 1){
                     //signal that input has been applied
-                    buzzer.beep(2, 50, 30);
+                    buzzer.beep(2, 40, 20);
                 }
                 ctlState = controlState::MOVING_TO_TARGET;
             }

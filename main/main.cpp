@@ -136,17 +136,17 @@ extern "C" void app_main(void)
 
         //testing remote receiver inputs  - log events
         if (remoteOpen.risingEdge){
-            ESP_LOGW(TAG, "== Remote open high== - time Released: %d", remoteOpen.msReleased);
-            buzzer.beep(1, 300, 0);
+            ESP_LOGW(TAG, "== Remote open on== - time Released: %d", remoteOpen.msReleased);
+            //buzzer.beep(1, 300, 0);
         }else if (remoteOpen.fallingEdge){
-            ESP_LOGW(TAG, "== Remote open low == - time Pressed: %d", remoteOpen.msPressed);
+            ESP_LOGI(TAG, "== Remote open off == - time Pressed: %d", remoteOpen.msPressed);
         }
 
         if (remoteClose.risingEdge){
             ESP_LOGW(TAG, "== Remote close high == - time Released: %d", remoteClose.msReleased);
-            buzzer.beep(2, 100, 0);
+            //buzzer.beep(2, 100, 0);
         }else if (remoteClose.fallingEdge){
-            ESP_LOGW(TAG, "== Remote close low == - time Pressed: %d", remoteClose.msPressed);
+            ESP_LOGI(TAG, "== Remote close low == - time Pressed: %d", remoteClose.msPressed);
         }
 
 
