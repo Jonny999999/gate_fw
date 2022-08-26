@@ -14,13 +14,13 @@ extern "C"
 
 
 //declaration of enum for gate state
-enum class gateState {IDLE, OPENING, CLOSING}; //OPEN, CLOSED, TIMEOUT
+enum class gateState {IDLE, OPENING, CLOSING, WAITING};
 //declaration of enum to tell stop function why the gate was stopped (for notifications)
 enum class stopReason {REACHED, LIMIT, TIMEOUT, CANCEL};
  
 //string array for printing the state as string
 //defined in gate.cpp (e.g. gateStateStr[(int)gateRight.state])
-extern const char* gateStateStr[3]; 
+extern const char* gateStateStr[4]; 
 
 
 
@@ -37,6 +37,7 @@ class gate {
                 gpio_num_t gpio_switchOpen_f,
                 gpio_num_t gpio_switchClosed_f,
                 const char name_f[16],
+                uint32_t msStop_f,
                 uint32_t msTimeout_f = 10000
             );
 
@@ -58,6 +59,7 @@ class gate {
         gpio_num_t gpio_switchOpen;
         gpio_num_t gpio_switchClosed;
         char name[16];
+        uint32_t msStop = 1000; //ms gate moves after motor turned off
         uint32_t msTimeout = 10000;
 
         //--- functions ---

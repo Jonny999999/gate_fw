@@ -5,7 +5,7 @@
 static const char *TAG = "gate";
 
 //definition of string array to be able to convert state enum to readable string
-const char* gateStateStr[3] = { "IDLE", "OPENING", "CLOSING" }; 
+const char* gateStateStr[4] = { "IDLE", "OPENING", "CLOSING", "WAITING" }; 
 
 
 //=============================
@@ -18,6 +18,7 @@ gate::gate(
         gpio_num_t gpio_switchOpen_f,
         gpio_num_t gpio_switchClosed_f,
         const char name_f[16],
+        uint32_t msStop_f,
         uint32_t msTimeout_f
         ){
     //copy provided configuration to private variables
@@ -26,6 +27,7 @@ gate::gate(
     gpio_switchOpen = gpio_switchOpen_f;
     gpio_switchClosed = gpio_switchClosed_f;
     strcpy(name, name_f);
+    msStop = msStop_f;
     msTimeout = msTimeout_f;
 
     //run init function which configures the gpio pins
@@ -104,7 +106,9 @@ void gate::stop(stopReason reason){
     gpio_set_level(gpio_relayClose, 0);
     gpio_set_level(gpio_relayOpen, 0);
 
-    state = gateState::IDLE;
+    //TODO: check if waiting is necessary at every stop reason
+    //e.g. switch directly to IDLE when reason is LIMIT
+    state = gateState::WAITING;
 
     //send notifications according to stop reason
     switch(reason){
@@ -124,6 +128,7 @@ void gate::stop(stopReason reason){
             ESP_LOGE(TAG, "Stopped gate %s via button!", name);
             break;
     }
+    ESP_LOGI(TAG, "gate %s - waiting for standstill...", name);
 }
 
 
@@ -191,6 +196,16 @@ void gate::handle(void){
             }else if (esp_log_timestamp() - timestampStart > msTimeout){
                 ESP_LOGE(TAG, "TIMEOUT gate %s", name);
                 stop(stopReason::TIMEOUT);
+            }
+            break;
+            
+        //-------------------
+        //----- waiting -----
+        //-------------------
+        case gateState::WAITING: //wait some time for gates to stop moving
+            if (esp_log_timestamp() - timestampStop > msStop) {
+                state = gateState::IDLE;
+                ESP_LOGW(TAG, "gate %s: done waiting for stop of movement - WAITING -> IDLE", name);
             }
             break;
     }
