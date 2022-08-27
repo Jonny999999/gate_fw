@@ -5,7 +5,7 @@
 static const char *TAG = "gate";
 
 //definition of string array to be able to convert state enum to readable string
-const char* gateStateStr[4] = { "IDLE", "OPENING", "CLOSING", "WAITING" }; 
+const char* gateStateStr[7] = { "IDLE", "OPEN_START", "OPEN_MOVING", "CLOSE_START", "CLOSE_MOVING", "WAIT_RETRY", "WAIT_LOCK" }; 
 
 
 //=============================
@@ -19,6 +19,7 @@ gate::gate(
         gpio_num_t gpio_switchClosed_f,
         const char name_f[16],
         uint32_t msStop_f,
+        uint32_t msRetry_f,
         uint32_t msTimeout_f
         ){
     //copy provided configuration to private variables
@@ -28,6 +29,7 @@ gate::gate(
     gpio_switchClosed = gpio_switchClosed_f;
     strcpy(name, name_f);
     msStop = msStop_f;
+    msRetry = msRetry_f;
     msTimeout = msTimeout_f;
 
     //run init function which configures the gpio pins
@@ -71,7 +73,9 @@ void gate::open(uint32_t msRun_f){
         //set target time the motor should run
         msRun = msRun_f; //default = msTimeout
 
-        state = gateState::OPENING;
+        state = gateState::OPEN_START;
+        //store direction for other functions
+        lastDirection = gateDirection::OPEN;
     }
 }
 
@@ -91,7 +95,9 @@ void gate::close(uint32_t msRun_f){
         //set target time the motor should run
         msRun = msRun_f; //default = msTimeout
 
-        state = gateState::CLOSING;
+        state = gateState::CLOSE_START;
+        //store direction for other functions
+        lastDirection = gateDirection::CLOSE;
     }
 }
 
@@ -108,27 +114,44 @@ void gate::stop(stopReason reason){
 
     //TODO: check if waiting is necessary at every stop reason
     //e.g. switch directly to IDLE when reason is LIMIT
-    state = gateState::WAITING;
 
     //send notifications according to stop reason
     switch(reason){
         case stopReason::REACHED:
             ESP_LOGE(TAG, "Stopped gate %s - target reached", name);
             buzzer.beep(2, 50, 30);
+            state = gateState::WAIT_LOCK;
             break;
         case stopReason::LIMIT:
             ESP_LOGE(TAG, "Stopped gate %s - limit reached", name);
             buzzer.beep(3, 50, 30);
+            state = gateState::WAIT_LOCK;
             break;
         case stopReason::TIMEOUT:
             ESP_LOGE(TAG, "Stopped gate %s - timeout!", name);
             buzzer.beep(4, 100, 50);
+            state = gateState::WAIT_LOCK;
             break;
         case stopReason::CANCEL:
             ESP_LOGE(TAG, "Stopped gate %s via button!", name);
+            state = gateState::WAIT_LOCK;
+            break;
+        case stopReason::RETRY:
+            ESP_LOGE(TAG, "Stopped gate %s via button!", name);
+            state = gateState::WAIT_RETRY;
             break;
     }
     ESP_LOGI(TAG, "gate %s - waiting for standstill...", name);
+}
+
+
+//============================
+//========== retry ===========
+//============================
+//function that stopps the gate, waits and starts the last command again
+void gate::retry(){
+    //stop movement and switch to WAIT_RETRY state
+    stop(stopReason::RETRY);
 }
 
 
@@ -160,7 +183,7 @@ void gate::handle(void){
         //-------------------
         //----- opening -----
         //-------------------
-        case gateState::OPENING:
+        case gateState::OPEN_START:
             //--- target duration exceeded ---
             if (esp_log_timestamp() - timestampStart > msRun){
                 ESP_LOGE(TAG, "Duration-reached gate %s", name);
@@ -175,13 +198,41 @@ void gate::handle(void){
             }else if (esp_log_timestamp() - timestampStart > msTimeout){
                 ESP_LOGE(TAG, "TIMEOUT gate %s", name);
                 stop(stopReason::TIMEOUT);
+
+            //--- away from closed position ---
+            }else if (gpio_get_level(gpio_switchClosed) == 0){ //TODO debounce switch
+                state = gateState::OPEN_MOVING;
+            }
+            break;
+
+        case gateState::OPEN_MOVING:
+            //--- target duration exceeded ---
+            if (esp_log_timestamp() - timestampStart > msRun){
+                ESP_LOGE(TAG, "Duration-reached gate %s", name);
+                stop(stopReason::REACHED);
+
+            //--- limit switch ---
+            }else if (gpio_get_level(gpio_switchOpen) == 1){
+                ESP_LOGE(TAG, "LIMIT-SWITCH gate %s", name);
+                stop(stopReason::LIMIT);
+
+            //--- timeout ---
+            }else if (esp_log_timestamp() - timestampStart > msTimeout){
+                ESP_LOGE(TAG, "TIMEOUT gate %s", name);
+                stop(stopReason::TIMEOUT);
+                
+            //--- reached wrong limit switch ---
+            }else if (gpio_get_level(gpio_switchClosed) == 1){
+                ESP_LOGE(TAG, "WRONG LIMIT SWITCH gate %s", name);
+                buzzer.beep(1, 1000, 0);
+                retry(); //stop, wait, restart opening
             }
             break;
 
         //-------------------
         //----- closing -----
         //-------------------
-        case gateState::CLOSING:
+        case gateState::CLOSE_START:
             //--- target duration exceeded ---
             if (esp_log_timestamp() - timestampStart > msRun){
                 ESP_LOGE(TAG, "Duration-reached gate %s", name);
@@ -196,16 +247,56 @@ void gate::handle(void){
             }else if (esp_log_timestamp() - timestampStart > msTimeout){
                 ESP_LOGE(TAG, "TIMEOUT gate %s", name);
                 stop(stopReason::TIMEOUT);
+
+            //--- away from open position ---
+            }else if (gpio_get_level(gpio_switchOpen) == 0){ //TODO debounce switch
+                state = gateState::CLOSE_MOVING;
+            }
+            break;
+
+        case gateState::CLOSE_MOVING:
+            //--- target duration exceeded ---
+            if (esp_log_timestamp() - timestampStart > msRun){
+                ESP_LOGE(TAG, "Duration-reached gate %s", name);
+                stop(stopReason::REACHED);
+
+            //--- limit switch ---
+            }else if (gpio_get_level(gpio_switchClosed) == 1){
+                ESP_LOGE(TAG, "LIMIT-SWITCH gate %s", name);
+                stop(stopReason::LIMIT);
+
+            //--- timeout ---
+            }else if (esp_log_timestamp() - timestampStart > msTimeout){
+                ESP_LOGE(TAG, "TIMEOUT gate %s", name);
+                stop(stopReason::TIMEOUT);
+            
+            //--- reached wrong limit switch ---
+            }else if (gpio_get_level(gpio_switchOpen) == 1){
+                ESP_LOGE(TAG, "WRONG LIMIT SWITCH gate %s", name);
+                buzzer.beep(1, 1000, 0);
+                retry(); //stop, wait, restart closing
             }
             break;
             
         //-------------------
         //----- waiting -----
         //-------------------
-        case gateState::WAITING: //wait some time for gates to stop moving
+        case gateState::WAIT_RETRY: //wait some time for gates to stop moving
+            if (esp_log_timestamp() - timestampStop > msRetry) {
+                switch (lastDirection){
+                    case gateDirection::OPEN:
+                        open(msRun);
+                        break;
+                    case gateDirection::CLOSE:
+                        close(msRun);
+                }
+                ESP_LOGW(TAG, "gate %s: done waiting for stop of movement - WAIT_RETRY -> open/close", name);
+            }
+            break;
+        case gateState::WAIT_LOCK: //wait some time for gates to stop moving
             if (esp_log_timestamp() - timestampStop > msStop) {
                 state = gateState::IDLE;
-                ESP_LOGW(TAG, "gate %s: done waiting for stop of movement - WAITING -> IDLE", name);
+                ESP_LOGW(TAG, "gate %s: done waiting for stop of movement - WAIT_LOCK -> IDLE", name);
             }
             break;
     }
