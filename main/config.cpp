@@ -29,11 +29,11 @@ gpio_evaluatedSwitch remoteClose(GPIO_S_REMOTE_CLOSE, false, false); //pullup fa
 //Create and configure gate objects
 //------ right gate ------
 //create gate object
-gate gateRight(GPIO_K_OPEN_RIGHT, GPIO_K_CLOSE_RIGHT, GPIO_B_RIGHT_OPEN, GPIO_B_RIGHT_CLOSED, "right", 1000, 500, 10000);
+gate gateRight(GPIO_K_OPEN_RIGHT, GPIO_K_CLOSE_RIGHT, GPIO_B_RIGHT_OPEN, GPIO_B_RIGHT_CLOSED, "right", 1000, 2000, 10000);
 
 //------ left gate ------
 //create gate object
-gate gateLeft(GPIO_K_OPEN_LEFT, GPIO_K_CLOSE_LEFT, GPIO_B_LEFT_OPEN, GPIO_B_LEFT_CLOSED, "left", 1000, 500, 10000);
+gate gateLeft(GPIO_K_OPEN_LEFT, GPIO_K_CLOSE_LEFT, GPIO_B_LEFT_OPEN, GPIO_B_LEFT_CLOSED, "left", 1000, 2000, 10000);
 //note: actual gpio pins are defined globally in config.hpp
 
 //create buzzer object on pin 12 with gap between queued events of 500ms 

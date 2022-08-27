@@ -76,6 +76,8 @@ void gate::open(uint32_t msRun_f){
         state = gateState::OPEN_START;
         //store direction for other functions
         lastDirection = gateDirection::OPEN;
+    } else {
+        ESP_LOGE(TAG, "gate %s - cant start opening, still in state %s", name, gateStateStr[(int)state]);
     }
 }
 
@@ -98,6 +100,8 @@ void gate::close(uint32_t msRun_f){
         state = gateState::CLOSE_START;
         //store direction for other functions
         lastDirection = gateDirection::CLOSE;
+    } else {
+        ESP_LOGE(TAG, "gate %s - cant start closing, still in state %s", name, gateStateStr[(int)state]);
     }
 }
 
@@ -137,7 +141,7 @@ void gate::stop(stopReason reason){
             state = gateState::WAIT_LOCK;
             break;
         case stopReason::RETRY:
-            ESP_LOGE(TAG, "Stopped gate %s via button!", name);
+            ESP_LOGE(TAG, "Stopped gate %s and switch to WAIT_RETRY for RETRY run", name);
             state = gateState::WAIT_RETRY;
             break;
     }
@@ -224,7 +228,7 @@ void gate::handle(void){
             //--- reached wrong limit switch ---
             }else if (gpio_get_level(gpio_switchClosed) == 1){
                 ESP_LOGE(TAG, "WRONG LIMIT SWITCH gate %s", name);
-                buzzer.beep(1, 1000, 0);
+                buzzer.beep(2, 1000, 100);
                 retry(); //stop, wait, restart opening
             }
             break;
@@ -273,7 +277,7 @@ void gate::handle(void){
             //--- reached wrong limit switch ---
             }else if (gpio_get_level(gpio_switchOpen) == 1){
                 ESP_LOGE(TAG, "WRONG LIMIT SWITCH gate %s", name);
-                buzzer.beep(1, 1000, 0);
+                buzzer.beep(2, 1000, 500);
                 retry(); //stop, wait, restart closing
             }
             break;
@@ -283,6 +287,7 @@ void gate::handle(void){
         //-------------------
         case gateState::WAIT_RETRY: //wait some time for gates to stop moving
             if (esp_log_timestamp() - timestampStop > msRetry) {
+                state = gateState::IDLE;
                 switch (lastDirection){
                     case gateDirection::OPEN:
                         open(msRun);
@@ -290,7 +295,7 @@ void gate::handle(void){
                     case gateDirection::CLOSE:
                         close(msRun);
                 }
-                ESP_LOGW(TAG, "gate %s: done waiting for stop of movement - WAIT_RETRY -> open/close", name);
+                ESP_LOGW(TAG, "gate %s: done waiting for %dms stop of movement - WAIT_RETRY -> open/close", name, msRetry);
             }
             break;
         case gateState::WAIT_LOCK: //wait some time for gates to stop moving

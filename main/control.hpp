@@ -115,7 +115,7 @@ void control(){
             //or reset to idle when gates have stopped
         case controlState::MOVING_TO_TARGET:
             //--- idle when gates stopped at target or timeout ---
-            if (gateLeft.state == gateState::IDLE && gateRight.state == gateState::IDLE){ //both do not move
+            if (gateLeft.state == gateState::IDLE && gateRight.state == gateState::IDLE){ //both do not move and are ready to receive new commands
                 ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
                 ctlState = controlState::IDLE;
 
@@ -126,7 +126,7 @@ void control(){
                 //stop gates
                 gateLeft.stop(stopReason::CANCEL);
                 gateRight.stop(stopReason::CANCEL);
-                ctlState = controlState::IDLE;
+                //note: controlState gets switched in above case when WAIT_LOCK is actually over (both gates IDLE)
                 buzzer.beep(1, 400, 0);
             }
             break;
