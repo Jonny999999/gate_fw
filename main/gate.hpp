@@ -70,6 +70,8 @@ class gate {
         //--- functions ---
         void init(void);
         void retry(void);
+        void changeState(gateState stateNew); //update 'state' variable and send log output
+        bool handleStopCondition(gateDirection direction); //check for targetduration, timeout, limitswitch
 
         //--- process variables ---
         uint32_t timestampStart;
