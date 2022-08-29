@@ -1,6 +1,7 @@
 # Installation
 ### Install esp-idf
-For this project **ESP-IDF v4.4.1** is required (with other versions it most likely will not compile)
+For this project **ESP-IDF v4.4.1** is required  
+(with other versions it most likely will not compile)
 ```bash
 #download esp-idf (verify version!)
 yay -S esp-idf #alternatively clone the esp-idf repository from github
@@ -22,8 +23,6 @@ source /opt/esp-idf/export.sh
 ### Compile
 ```bash
 idf.py build
-#or
-~~make~~ #make not working atm
 ```
 
 ### Upload
@@ -33,11 +32,10 @@ idf.py build
 - run flash command:
 ```bash
 idf.py flash
-#or
-~~make flash~~ #make not working atm
 ```
-- once "connecting...' successfully, BOOT button can be released
-Note: it is known that the right gate opens while flashing... (the relay gets turned off by limit switch then)
+- once "connecting...' successfully, BOOT button can be released  
+Note: it is known that the **right gate opens while flashing**...  
+(the relay still gets turned off by limit switch, so there will be no damage)
 
 ### Monitor
 - connect FTDI programmer to board (VCC to VCC; TX to RX; RX to TX)
@@ -46,8 +44,6 @@ Note: it is known that the right gate opens while flashing... (the relay gets tu
 - run monitor command:
 ```bash
 idf.py monitor
-#or
-~~make monitor~~ #make not working atm
 ```
 - once connected release BOOT button
 - press RESET button once for restart
@@ -57,11 +53,13 @@ idf.py monitor
 
 
 # Usage
+See [function diagram](function-diagram.drawio.pdf) for a detailed overview of the implemented control.
+
 ### Open slightly
 - press open button once -> opens for ~1s
 
 ### Open more
-- press open button several times with less than 1s gap
+- press open button several times with less than 1s gap  
   -> opens 1s + 0.4s * times-pressed
 
 ### Open completely
@@ -70,12 +68,12 @@ or
 - press 'A-Button' on remote once
 
 ### Close completely
-- press close button once
-or
+- press close button once  
+  or
 - press 'B-Button' on remote once
 
 ### Stop moving gate
-- press any button (on gate or remote) while a gate moves
+- press any button (on gate or remote) while a gate moves  
 Note: within 1s after pressing open button only close button or remote works to stop the gates
 
 
