@@ -77,7 +77,7 @@ void gate::open(uint32_t msRun_f){
         //store direction for other functions
         lastDirection = gateDirection::OPEN;
     } else {
-        ESP_LOGE(TAG, "%s - cant start opening, still in state %s", name, gateStateStr[(int)state]);
+        ESP_LOGE(TAG, "%s - cant start opening, still in state [%s]", name, gateStateStr[(int)state]);
     }
 }
 
@@ -101,7 +101,7 @@ void gate::close(uint32_t msRun_f){
         //store direction for other functions
         lastDirection = gateDirection::CLOSE;
     } else {
-        ESP_LOGE(TAG, "%s - cant start closing, still in state %s", name, gateStateStr[(int)state]);
+        ESP_LOGE(TAG, "%s - cant start closing, still in state [%s]", name, gateStateStr[(int)state]);
     }
 }
 
@@ -194,24 +194,20 @@ void gate::changeState(gateState stateNew){
 bool gate::handleStopCondition(gateDirection direction){
     //--- target duration exceeded ---
     if (esp_log_timestamp() - timestampStart > msRun){
-        ESP_LOGI(TAG, "%s - TARGET duration-reached", name);
         stop(stopReason::REACHED);
     } 
     //--- timeout ---
     else if (esp_log_timestamp() - timestampStart > msTimeout){
-        ESP_LOGE(TAG, "TIMEOUT gate %s", name);
         stop(stopReason::TIMEOUT);
     } 
     //--- limit switch open ---
     else if ( (direction == gateDirection::OPEN)
             && (gpio_get_level(gpio_switchOpen) == 1) ){
-        ESP_LOGE(TAG, "%s - LIMIT-SWITCH", name);
         stop(stopReason::LIMIT);
     }
     //--- limit switch closed ---
     else if ( (direction == gateDirection::CLOSE)
             && (gpio_get_level(gpio_switchClosed) == 1) ){
-        ESP_LOGE(TAG, "%s - LIMIT-SWITCH", name);
         stop(stopReason::LIMIT);
     }
     //--- no stop condiction applies ---
@@ -300,7 +296,7 @@ void gate::handle(void){
                     case gateDirection::CLOSE:
                         close(msRun);
                 }
-                ESP_LOGI(TAG, "%s - done waiting %dms for stop of movement", name, msRetry);
+                ESP_LOGI(TAG, "%s - done waiting %dms for stop of movement (retry delay)", name, msRetry);
             }
             break;
 
@@ -308,7 +304,7 @@ void gate::handle(void){
         case gateState::WAIT_LOCK:
             if (esp_log_timestamp() - timestampStop > msStop) {
                 changeState(gateState::IDLE);
-                ESP_LOGI(TAG, "%s - done waiting %dms for stop of movement", name, msRetry);
+                ESP_LOGI(TAG, "%s - done waiting %dms for stop of movement (stop delay)", name, msStop);
             }
             break;
     }

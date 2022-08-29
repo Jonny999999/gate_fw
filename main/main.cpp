@@ -83,6 +83,15 @@ extern "C" void app_main(void)
     //count for testing beep class
     //int count = 2;
 
+    //----------------------------
+    //--------- loglevel ---------
+    //----------------------------
+    esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("buzzer", ESP_LOG_ERROR);
+    esp_log_level_set("main", ESP_LOG_INFO);
+    esp_log_level_set("control", ESP_LOG_INFO);
+    esp_log_level_set("gate", ESP_LOG_INFO);
+
 
     //=============================
     //========= main loop =========
@@ -96,13 +105,14 @@ extern "C" void app_main(void)
         //-----------------------------
         //periodicly run all functions required for controlling the gates
 
-        //run handle function for evaluated switches TODO: run these in another task?
+        //run handle function for evaluated switches
         //buttons
         buttonOpen.handle();
         buttonClose.handle();
         //remote
         remoteOpen.handle();
         remoteClose.handle();
+        //TODO: declare and run these only where actually used to make use of events (not global)
         //note: the switch objects are declared in config.hpp and configured in config.cpp
 
         //run function that processes buttons and controls the gate
@@ -117,6 +127,7 @@ extern "C" void app_main(void)
         //----------------------------
         //------- debug output -------
         //----------------------------
+        //TODO: add logging and loglevel support in evaluated switch library to make the below code unnecessary
         //testing evaluated switch - log button events
         if (buttonOpen.risingEdge){
             ESP_LOGI(TAG, "== Button open pressed == - time Released: %d", buttonOpen.msReleased);
