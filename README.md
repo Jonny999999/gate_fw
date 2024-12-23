@@ -1,3 +1,13 @@
+Firmware for an automated sliding gate. Documentation: https://pfusch.zone/automated-sliding-gate
+
+# Photos
+Left: Photo of control-pcb + RC-module (V1.0)  
+Right: Photo of cabinet with power relays and V0.1 board (in V1.0 new board version was used and outsourced due to EMV issues when switching)
+<p align="center">
+  <img src="doc/img/V1.0_controlBox.jpg" width="58%"/>
+  <img src="doc/img/V0.1_controlCabinet.jpg" width="40%"/>
+</p>
+
 # Installation
 ### Install esp-idf
 For this project **ESP-IDF v4.4.1** is required  
@@ -81,6 +91,7 @@ Note: within 1s after pressing open button only close button or remote works to 
 
 
 # Pin assignment
+See connection plan: [connection-plan.odp](connection-plan.odp)
 ## Inputs
 ### Buttons, Remote control
 Buttons in gate and panel, remote receiver switch to 12V
