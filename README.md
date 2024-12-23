@@ -8,6 +8,9 @@ Right: Photo of cabinet with power relays and V0.1 board (in V1.0 new board vers
   <img src="doc/img/V0.1_controlCabinet.jpg" width="40%"/>
 </p>
 
+# Schema
+![image](doc/img/schema.png)
+
 # Installation
 ### Install esp-idf
 For this project **ESP-IDF v4.4.1** is required  
