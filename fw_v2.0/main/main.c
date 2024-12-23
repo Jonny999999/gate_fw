@@ -83,8 +83,8 @@ int send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_t reg_
     ESP_LOGD(TAG, "sent %d bytes via uart", len);
 
     // Receive response
-    uint8_t response[128];
-    len = uart_read_bytes(UART_NUM, response, sizeof(response), pdMS_TO_TICKS(200));
+    uint8_t response[8];
+    len = uart_read_bytes(UART_NUM, response, sizeof(response), pdMS_TO_TICKS(100));
     // log response
     if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG)
     {
@@ -157,9 +157,9 @@ int read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *value)
     ESP_LOGD(TAG, "Sent Modbus read request (%d bytes)", len);
 
     // receive response
-    uint8_t response[128];
+    uint8_t response[7];
     ESP_LOGV(TAG, "reading response...");
-    len = uart_read_bytes(UART_NUM, response, sizeof(response), pdMS_TO_TICKS(200));
+    len = uart_read_bytes(UART_NUM, response, sizeof(response), pdMS_TO_TICKS(100));
 
     if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG)
     {
@@ -255,6 +255,7 @@ void modbus_task(void *arg)
 
 void app_main(void)
 {
+    esp_log_level_set("Modbus-RTU", ESP_LOG_INFO);  
     // Configure UART
     uart_config_t uart_config = {
         .baud_rate = BAUD_RATE,
