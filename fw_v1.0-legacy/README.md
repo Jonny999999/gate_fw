@@ -1,3 +1,13 @@
+Legacy firmware from tag: **V1.1_before-vfd**  
+No longer used, just for reference.
+Below a copy of the README at that tag (last V1.1 working state):
+  
+  
+  
+<br>
+  
+---
+  
 Firmware for an automated sliding gate. Documentation: https://pfusch.zone/automated-sliding-gate
 
 # Photos
