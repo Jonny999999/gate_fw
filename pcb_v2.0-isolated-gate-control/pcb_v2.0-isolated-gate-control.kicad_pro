@@ -578,6 +578,54 @@
     [
       "ac76819f-1531-4fd0-a2aa-e864e761b2bd",
       "Root"
+    ],
+    [
+      "13c5e807-f3a4-427b-9392-b751f0c6eff4",
+      "isolated-digital-input_sw-to-gnd"
+    ],
+    [
+      "bbdc1a05-9a23-4752-b265-2c49fdbe46bf",
+      "isolated-digital-input_sw-to-gnd1"
+    ],
+    [
+      "a5103442-d2e6-4afb-b0b0-2532ad9bd8d7",
+      "isolated-digital-input_sw-to-gnd2"
+    ],
+    [
+      "2b5802e4-c84b-42d0-bbe7-2bdd003ea4fb",
+      "isolated-digital-input_sw-to-gnd3"
+    ],
+    [
+      "e85d47b3-0fe7-44c8-8400-3653698e08df",
+      "isolated-digital-input_sw-to-gnd4"
+    ],
+    [
+      "388b33e5-4e93-4de6-a3fb-44262efe63f7",
+      "isolated-digital-input_sw-to-gnd5"
+    ],
+    [
+      "09c6ab1d-f724-477c-bd68-97209d8d1ecb",
+      "isolated-digital-input_sw-to-gnd6"
+    ],
+    [
+      "9484994e-30e7-46eb-8e2e-f392841cd641",
+      "isolated-digital-input_sw-to-gnd7"
+    ],
+    [
+      "d634e63f-865e-4123-9e9a-b1d708e0259c",
+      "isolated-digital-input_sw-to-gnd8"
+    ],
+    [
+      "99dc4973-8479-410b-9b77-3874bc140db2",
+      "isolated-digital-input_sw-to-gnd9"
+    ],
+    [
+      "3ec533d0-3606-4e36-868f-4dde7658352e",
+      "isolated-digital-input_sw-to-gnd10"
+    ],
+    [
+      "0276c754-1029-40ac-bf76-7dc1cba7f0c8",
+      "isolated-digital-input_sw-to-gnd11"
     ]
   ],
   "text_variables": {}
