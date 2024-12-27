@@ -7185,16 +7185,6 @@
 	)
 	(wire
 		(pts
-			(xy 264.16 273.05) (xy 288.29 273.05)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "079097eb-6a2e-48a4-a11b-7757c71e2e0f")
-	)
-	(wire
-		(pts
 			(xy 85.09 82.55) (xy 105.41 82.55)
 		)
 		(stroke
@@ -7285,7 +7275,7 @@
 	)
 	(wire
 		(pts
-			(xy 195.58 242.57) (xy 213.36 242.57)
+			(xy 182.88 242.57) (xy 213.36 242.57)
 		)
 		(stroke
 			(width 0)
@@ -7525,7 +7515,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 245.11) (xy 304.8 245.11)
+			(xy 281.94 245.11) (xy 302.26 245.11)
 		)
 		(stroke
 			(width 0)
@@ -7732,16 +7722,6 @@
 			(type default)
 		)
 		(uuid "2d0d582d-c237-4a27-91fd-7e44fc592bf9")
-	)
-	(wire
-		(pts
-			(xy 288.29 273.05) (xy 288.29 250.19)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "2d45c00e-6dac-4ac3-aa26-86e651875a79")
 	)
 	(wire
 		(pts
@@ -8065,16 +8045,6 @@
 	)
 	(wire
 		(pts
-			(xy 285.75 269.24) (xy 262.89 269.24)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "3cbdf916-c9bb-49af-a2fe-4c02488713a7")
-	)
-	(wire
-		(pts
 			(xy 63.5 34.29) (xy 74.93 34.29)
 		)
 		(stroke
@@ -8305,7 +8275,7 @@
 	)
 	(wire
 		(pts
-			(xy 195.58 245.11) (xy 213.36 245.11)
+			(xy 182.88 245.11) (xy 213.36 245.11)
 		)
 		(stroke
 			(width 0)
@@ -8765,6 +8735,16 @@
 	)
 	(wire
 		(pts
+			(xy 281.94 247.65) (xy 299.72 247.65)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6841d643-65be-4bb9-85a9-7a1f37d3c2ed")
+	)
+	(wire
+		(pts
 			(xy 210.82 114.3) (xy 233.68 114.3)
 		)
 		(stroke
@@ -8915,7 +8895,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 226.06) (xy 309.88 226.06)
+			(xy 281.94 226.06) (xy 300.99 226.06)
 		)
 		(stroke
 			(width 0)
@@ -9085,7 +9065,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 237.49) (xy 311.15 237.49)
+			(xy 281.94 237.49) (xy 316.23 237.49)
 		)
 		(stroke
 			(width 0)
@@ -9215,7 +9195,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 232.41) (xy 308.61 232.41)
+			(xy 281.94 232.41) (xy 316.23 232.41)
 		)
 		(stroke
 			(width 0)
@@ -9325,7 +9305,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 240.03) (xy 295.91 240.03)
+			(xy 281.94 240.03) (xy 302.26 240.03)
 		)
 		(stroke
 			(width 0)
@@ -9335,7 +9315,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 234.95) (xy 308.61 234.95)
+			(xy 281.94 234.95) (xy 316.23 234.95)
 		)
 		(stroke
 			(width 0)
@@ -9665,7 +9645,7 @@
 	)
 	(wire
 		(pts
-			(xy 285.75 252.73) (xy 281.94 252.73)
+			(xy 281.94 252.73) (xy 300.99 252.73)
 		)
 		(stroke
 			(width 0)
@@ -10165,7 +10145,7 @@
 	)
 	(wire
 		(pts
-			(xy 194.31 227.33) (xy 213.36 227.33)
+			(xy 193.04 227.33) (xy 213.36 227.33)
 		)
 		(stroke
 			(width 0)
@@ -10485,16 +10465,6 @@
 	)
 	(wire
 		(pts
-			(xy 285.75 269.24) (xy 285.75 252.73)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "db7c7ba5-dd82-4fab-998c-fbf9c845b36c")
-	)
-	(wire
-		(pts
 			(xy 30.48 276.86) (xy 53.34 276.86)
 		)
 		(stroke
@@ -10575,7 +10545,7 @@
 	)
 	(wire
 		(pts
-			(xy 195.58 247.65) (xy 213.36 247.65)
+			(xy 181.61 247.65) (xy 213.36 247.65)
 		)
 		(stroke
 			(width 0)
@@ -10665,7 +10635,7 @@
 	)
 	(wire
 		(pts
-			(xy 194.31 229.87) (xy 213.36 229.87)
+			(xy 182.88 229.87) (xy 213.36 229.87)
 		)
 		(stroke
 			(width 0)
@@ -10765,7 +10735,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 223.52) (xy 298.45 223.52)
+			(xy 281.94 223.52) (xy 300.99 223.52)
 		)
 		(stroke
 			(width 0)
@@ -10905,7 +10875,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 250.19) (xy 288.29 250.19)
+			(xy 281.94 250.19) (xy 300.99 250.19)
 		)
 		(stroke
 			(width 0)
@@ -11406,13 +11376,14 @@
 		)
 		(uuid "dec0c709-f726-432c-aaa8-5792ca884af9")
 	)
-	(text "Short Circuit Protection: continuous, auto recovery"
+	(text "max out current: 200 mA\nmax capactitive load: 1200 uF\nShort Circuit Protection: continuous, auto recovery"
 		(exclude_from_sim no)
 		(at 175.006 53.848 0)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
+			(justify left)
 		)
 		(uuid "fa7a776c-6f59-4a8d-8bd3-550495f51b78")
 	)
@@ -11439,7 +11410,7 @@
 		(uuid "01b21a5f-fa81-4afa-a589-2cc32654237c")
 	)
 	(label "dIn_Gate1-Closed"
-		(at 193.04 217.17 0)
+		(at 195.58 240.03 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11450,7 +11421,7 @@
 		(uuid "02e349e4-be71-4d91-b287-ac8eed196a34")
 	)
 	(label "dIn_LightBarrier"
-		(at 262.89 269.24 0)
+		(at 193.04 217.17 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11461,13 +11432,13 @@
 		(uuid "034e276f-525c-4c97-8cea-4099b74b5e8a")
 	)
 	(label "dIn_Gate2-Closed"
-		(at 193.04 222.25 0)
+		(at 300.99 250.19 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify right bottom)
 		)
 		(uuid "05585427-f65f-4b0a-b74b-fad4871b50f8")
 	)
@@ -11483,7 +11454,7 @@
 		(uuid "083cc6a9-9958-4722-aa0e-06fec96ca843")
 	)
 	(label "dOut_EnLightBarriers"
-		(at 311.15 237.49 180)
+		(at 316.23 237.49 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11516,7 +11487,7 @@
 		(uuid "17dcae47-d1e5-4143-ac07-8d0e80ab4243")
 	)
 	(label "dOut_RelayEnServo"
-		(at 309.88 226.06 180)
+		(at 316.23 232.41 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11527,13 +11498,13 @@
 		(uuid "1ba16d75-f700-4093-92c4-9df7814338fb")
 	)
 	(label "dIn_ButtonOpen"
-		(at 194.31 227.33 0)
+		(at 300.99 223.52 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify right bottom)
 		)
 		(uuid "1cc307a0-b160-43d8-9b4c-4d3011967633")
 	)
@@ -11549,7 +11520,7 @@
 		(uuid "1e065ad8-2a1c-484c-aa10-2e09d757b602")
 	)
 	(label "dIn_Encoder1"
-		(at 195.58 245.11 0)
+		(at 193.04 222.25 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11571,13 +11542,13 @@
 		(uuid "25b574ae-f9ec-4b08-b8c8-1d1daa2830c7")
 	)
 	(label "dOut_Buzzer"
-		(at 298.45 223.52 180)
+		(at 182.88 247.65 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.524 1.524)
 			)
-			(justify right bottom)
+			(justify left bottom)
 		)
 		(uuid "32db2cbd-4a6b-4c10-83f5-4182e7f49de8")
 	)
@@ -11637,18 +11608,18 @@
 		(uuid "4b0d8d0b-cb0f-41c7-a7a0-952f89a04224")
 	)
 	(label "dIn_RemoteOpen"
-		(at 195.58 240.03 0)
+		(at 299.72 247.65 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify right bottom)
 		)
 		(uuid "57a22fb5-957f-4aee-bdc0-8a8f250903aa")
 	)
 	(label "dOut_RelayEnServo"
-		(at 210.82 90.17 0)
+		(at 210.82 66.04 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11670,7 +11641,7 @@
 		(uuid "5ec11258-db7a-4f46-9a02-bd1dd88c6dcd")
 	)
 	(label "dOut_RelayEnVFD1"
-		(at 210.82 41.91 0)
+		(at 210.82 162.56 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11681,7 +11652,7 @@
 		(uuid "630b27c3-412f-4c51-871a-88ab31f00546")
 	)
 	(label "dOut_EnLightBarriers"
-		(at 210.82 138.43 0)
+		(at 210.82 90.17 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11692,13 +11663,13 @@
 		(uuid "6818ab08-cc15-44b8-9308-1eb644618255")
 	)
 	(label "dIn_ButtonClose"
-		(at 194.31 229.87 0)
+		(at 302.26 245.11 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify right bottom)
 		)
 		(uuid "68579281-c6c6-4836-82e7-ce4bbec62cc4")
 	)
@@ -11714,18 +11685,18 @@
 		(uuid "793f2aba-d478-45c7-a52d-fefe34f3a44f")
 	)
 	(label "dOut_ServoPWM"
-		(at 304.8 245.11 180)
+		(at 182.88 229.87 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.524 1.524)
 			)
-			(justify right bottom)
+			(justify left bottom)
 		)
 		(uuid "87d5a895-3d74-4585-b7d6-a5f6924340bd")
 	)
 	(label "dOut_LED"
-		(at 210.82 114.3 0)
+		(at 210.82 41.91 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11736,7 +11707,7 @@
 		(uuid "88e026a6-b9ee-4fe5-9694-1c4bf2c5edf4")
 	)
 	(label "dOut_LED"
-		(at 295.91 240.03 180)
+		(at 316.23 234.95 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11758,7 +11729,7 @@
 		(uuid "a4fa5c13-3ad7-4ef4-b950-e06130e19ccc")
 	)
 	(label "dOut_Buzzer"
-		(at 210.82 162.56 0)
+		(at 210.82 114.3 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11769,13 +11740,13 @@
 		(uuid "ae98b607-1144-43fd-af39-d5f2ec8fe929")
 	)
 	(label "dIn_Gate2-Open"
-		(at 193.04 219.71 0)
+		(at 300.99 252.73 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify right bottom)
 		)
 		(uuid "af0193ef-a2ab-4770-a7bc-90b75a16e4ca")
 	)
@@ -11791,7 +11762,7 @@
 		(uuid "b015fdfa-07b9-4736-9903-052fd196b2cc")
 	)
 	(label "dIn_Reserve"
-		(at 264.16 273.05 0)
+		(at 193.04 219.71 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11802,7 +11773,7 @@
 		(uuid "b679da0b-255d-42d5-8181-48e11467de8f")
 	)
 	(label "dOut_RelayEnVFD2"
-		(at 210.82 66.04 0)
+		(at 210.82 138.43 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -11835,13 +11806,13 @@
 		(uuid "bc33f06c-45a9-49b2-b3b7-1a4cac5a534c")
 	)
 	(label "dIn_RemoteClose"
-		(at 195.58 242.57 0)
+		(at 300.99 226.06 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify right bottom)
 		)
 		(uuid "c724de3f-8055-4e16-9353-ff73bb1bfac2")
 	)
@@ -11857,24 +11828,24 @@
 		(uuid "c7a18fcd-19c2-4571-b104-c0c8b83d9311")
 	)
 	(label "dOut_RelayEnVFD1"
-		(at 308.61 234.95 180)
+		(at 182.88 242.57 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.524 1.524)
 			)
-			(justify right bottom)
+			(justify left bottom)
 		)
 		(uuid "ca5ad74a-9afa-46bb-9803-0e01a24cf74d")
 	)
 	(label "dOut_RelayEnVFD2"
-		(at 308.61 232.41 180)
+		(at 182.88 245.11 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.524 1.524)
 			)
-			(justify right bottom)
+			(justify left bottom)
 		)
 		(uuid "d896f862-7999-4eb1-8acb-2fc1a2e6947e")
 	)
@@ -11934,7 +11905,7 @@
 		(uuid "ece07086-7ede-4890-b1a3-d6b22ab1b216")
 	)
 	(label "dIn_Encoder2"
-		(at 195.58 247.65 0)
+		(at 193.04 227.33 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -15067,7 +15038,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "100uF"
+		(property "Value" "330uF"
 			(at 222.25 187.0709 0)
 			(effects
 				(font
@@ -15076,7 +15047,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_THT:CP_Radial_D18.0mm_P7.50mm"
+		(property "Footprint" "Capacitor_THT:CP_Radial_D10.0mm_P5.00mm"
 			(at 225.0948 190.5 0)
 			(effects
 				(font
@@ -23517,7 +23488,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical"
 			(at 351.028 123.19 90)
 			(effects
 				(font
