@@ -6826,12 +6826,6 @@
 		(uuid "75665826-195e-4e2d-972d-44e2d5809496")
 	)
 	(junction
-		(at 166.37 111.76)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "772cf1bc-65fb-4392-b34e-ef5f6eaa654c")
-	)
-	(junction
 		(at 128.27 212.09)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -10025,7 +10019,7 @@
 	)
 	(wire
 		(pts
-			(xy 166.37 114.3) (xy 161.29 114.3)
+			(xy 161.29 114.3) (xy 171.45 114.3)
 		)
 		(stroke
 			(width 0)
@@ -10142,6 +10136,16 @@
 			(type default)
 		)
 		(uuid "cc0ef9cc-61f3-4cc1-a66f-47b7cb227393")
+	)
+	(wire
+		(pts
+			(xy 171.45 113.03) (xy 171.45 114.3)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "cc884a58-a241-4eac-a042-a2111d36bc0d")
 	)
 	(wire
 		(pts
@@ -10822,16 +10826,6 @@
 			(type default)
 		)
 		(uuid "f1f9628e-748c-46fd-8b9b-3b286a541a33")
-	)
-	(wire
-		(pts
-			(xy 166.37 111.76) (xy 166.37 114.3)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "f23df1f2-d9f1-4d21-a1fb-a8baec188268")
 	)
 	(wire
 		(pts
@@ -13262,6 +13256,71 @@
 			(project "pcb_v2.0-isolated-gate-control"
 				(path "/ac76819f-1531-4fd0-a2aa-e864e761b2bd"
 					(reference "F2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+5VA")
+		(at 171.45 113.03 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "2b44d01e-ad71-4160-bea9-9595f5b3a086")
+		(property "Reference" "#PWR029"
+			(at 171.45 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+5VA"
+			(at 175.26 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 171.45 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 171.45 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+5VA\""
+			(at 171.45 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "511d94b0-0d26-4ba8-af03-5f1feea5f184")
+		)
+		(instances
+			(project "pcb_v2.0-isolated-gate-control"
+				(path "/ac76819f-1531-4fd0-a2aa-e864e761b2bd"
+					(reference "#PWR029")
 					(unit 1)
 				)
 			)
