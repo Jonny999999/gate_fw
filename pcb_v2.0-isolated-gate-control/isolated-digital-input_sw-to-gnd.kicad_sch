@@ -141,6 +141,127 @@
 				)
 			)
 		)
+		(symbol "Device:R"
+			(pin_numbers hide)
+			(pin_names
+				(offset 0)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "R"
+				(at 2.032 0 90)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "R"
+				(at 0 0 90)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at -1.778 0 90)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" "~"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Resistor"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "R res resistor"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_fp_filters" "R_*"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "R_0_1"
+				(rectangle
+					(start -1.016 -2.54)
+					(end 1.016 2.54)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "R_1_1"
+				(pin passive line
+					(at 0 3.81 270)
+					(length 1.27)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -3.81 90)
+					(length 1.27)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+		)
 		(symbol "Diode:PTVS5V0Z1USK"
 			(pin_numbers hide)
 			(pin_names hide)
@@ -1283,125 +1404,6 @@
 				)
 			)
 		)
-		(symbol "treiber-rescue:R"
-			(pin_numbers hide)
-			(pin_names
-				(offset 0)
-			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(property "Reference" "R"
-				(at 2.032 0 90)
-				(effects
-					(font
-						(size 1.016 1.016)
-					)
-				)
-			)
-			(property "Value" "R"
-				(at 0.1778 0.0254 90)
-				(effects
-					(font
-						(size 1.016 1.016)
-					)
-				)
-			)
-			(property "Footprint" ""
-				(at -1.778 0 90)
-				(effects
-					(font
-						(size 0.762 0.762)
-					)
-				)
-			)
-			(property "Datasheet" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 0.762 0.762)
-					)
-				)
-			)
-			(property "Description" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "Field5" ""
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(property "ki_fp_filters" "R? SM0603 SM0805 R?-* SM1206"
-				(at 0 0 0)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-					(hide yes)
-				)
-			)
-			(symbol "R_0_1"
-				(rectangle
-					(start -1.016 3.81)
-					(end 1.016 -3.81)
-					(stroke
-						(width 0.3048)
-						(type solid)
-					)
-					(fill
-						(type none)
-					)
-				)
-			)
-			(symbol "R_1_1"
-				(pin passive line
-					(at 0 6.35 270)
-					(length 2.54)
-					(name "~"
-						(effects
-							(font
-								(size 1.524 1.524)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.524 1.524)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 0 -6.35 90)
-					(length 2.54)
-					(name "~"
-						(effects
-							(font
-								(size 1.524 1.524)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.524 1.524)
-							)
-						)
-					)
-				)
-			)
-		)
 	)
 	(junction
 		(at 90.17 69.85)
@@ -1427,6 +1429,10 @@
 		(color 0 0 0 0)
 		(uuid "c3d6b367-9e45-4dcb-89a0-5546b202b343")
 	)
+	(no_connect
+		(at 46.99 72.39)
+		(uuid "5086f9a2-dc91-4e8d-822b-96ad95b4b132")
+	)
 	(wire
 		(pts
 			(xy 46.99 77.47) (xy 43.18 77.47)
@@ -1439,7 +1445,7 @@
 	)
 	(wire
 		(pts
-			(xy 90.17 49.53) (xy 90.17 53.34)
+			(xy 90.17 49.53) (xy 90.17 55.88)
 		)
 		(stroke
 			(width 0)
@@ -1469,7 +1475,7 @@
 	)
 	(wire
 		(pts
-			(xy 90.17 66.04) (xy 90.17 69.85)
+			(xy 90.17 63.5) (xy 90.17 69.85)
 		)
 		(stroke
 			(width 0)
@@ -1509,16 +1515,6 @@
 	)
 	(wire
 		(pts
-			(xy 102.87 69.85) (xy 111.76 69.85)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "6fde24e9-11d6-49d0-a86b-586c51bd622a")
-	)
-	(wire
-		(pts
 			(xy 124.46 58.42) (xy 134.62 58.42)
 		)
 		(stroke
@@ -1529,7 +1525,7 @@
 	)
 	(wire
 		(pts
-			(xy 124.46 55.88) (xy 124.46 58.42)
+			(xy 124.46 53.34) (xy 124.46 58.42)
 		)
 		(stroke
 			(width 0)
@@ -1619,6 +1615,16 @@
 	)
 	(wire
 		(pts
+			(xy 100.33 69.85) (xy 111.76 69.85)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c3d33975-5c85-4df7-a57d-fc8224b21452")
+	)
+	(wire
+		(pts
 			(xy 111.76 69.85) (xy 111.76 72.39)
 		)
 		(stroke
@@ -1629,7 +1635,17 @@
 	)
 	(wire
 		(pts
-			(xy 124.46 41.91) (xy 124.46 43.18)
+			(xy 90.17 69.85) (xy 92.71 69.85)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "cfac1ec6-a37c-4d66-b907-1706a5067647")
+	)
+	(wire
+		(pts
+			(xy 124.46 41.91) (xy 124.46 45.72)
 		)
 		(stroke
 			(width 0)
@@ -1649,7 +1665,7 @@
 	)
 	(rectangle
 		(start 36.83 31.75)
-		(end 168.91 101.6)
+		(end 171.958 101.6)
 		(stroke
 			(width 0)
 			(type default)
@@ -1683,7 +1699,7 @@
 	)
 	(text "Digital input (switch to GND)"
 		(exclude_from_sim no)
-		(at 92.456 37.592 0)
+		(at 63.754 36.068 0)
 		(effects
 			(font
 				(size 2.2 2.2)
@@ -1693,7 +1709,7 @@
 		)
 		(uuid "a13327f7-dc7f-49d0-afc9-72d40a942327")
 	)
-	(text "Low when input switched to GND\nHigh when input floating or 12V"
+	(text "Non-Inverted:\n  - Low when input switched to GND\n  - High when input floating or 12V"
 		(exclude_from_sim no)
 		(at 133.096 62.738 0)
 		(effects
@@ -1703,17 +1719,6 @@
 			(justify left)
 		)
 		(uuid "a6a9ef32-49ba-4691-a08e-162604d0a884")
-	)
-	(text "TODO: evaluate/test led current\ncreate sub-page for 6x reuse of this"
-		(exclude_from_sim no)
-		(at 77.724 41.91 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "de5fba40-6bff-43e7-b469-6138d37184a9")
 	)
 	(text "Uf=1V  If=5mA\n-> 2k2 for 12V"
 		(exclude_from_sim no)
@@ -1859,7 +1864,7 @@
 		)
 	)
 	(symbol
-		(lib_id "treiber-rescue:R")
+		(lib_id "Device:R")
 		(at 124.46 49.53 180)
 		(unit 1)
 		(exclude_from_sim no)
@@ -1896,11 +1901,12 @@
 			(at 124.46 49.53 0)
 			(effects
 				(font
-					(size 0.762 0.762)
+					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Resistor"
 			(at 124.46 49.53 0)
 			(effects
 				(font
@@ -2079,7 +2085,7 @@
 		)
 	)
 	(symbol
-		(lib_id "treiber-rescue:R")
+		(lib_id "Device:R")
 		(at 90.17 59.69 180)
 		(unit 1)
 		(exclude_from_sim no)
@@ -2116,11 +2122,12 @@
 			(at 90.17 59.69 0)
 			(effects
 				(font
-					(size 0.762 0.762)
+					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Resistor"
 			(at 90.17 59.69 0)
 			(effects
 				(font
@@ -3087,7 +3094,7 @@
 		)
 	)
 	(symbol
-		(lib_id "treiber-rescue:R")
+		(lib_id "Device:R")
 		(at 96.52 69.85 270)
 		(unit 1)
 		(exclude_from_sim no)
@@ -3124,11 +3131,12 @@
 			(at 96.52 69.85 0)
 			(effects
 				(font
-					(size 0.762 0.762)
+					(size 1.27 1.27)
 				)
+				(hide yes)
 			)
 		)
-		(property "Description" ""
+		(property "Description" "Resistor"
 			(at 96.52 69.85 0)
 			(effects
 				(font
