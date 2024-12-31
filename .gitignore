@@ -27,6 +27,12 @@ fp-info-cache
 
 *.kicad_prl
 
+pcb_*/export/
+
+
+#pcb2gcode
+**/pcb2gcode/out/
+
 
 #drawio
 *.bkp
