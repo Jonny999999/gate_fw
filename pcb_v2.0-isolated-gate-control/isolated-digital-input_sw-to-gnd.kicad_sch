@@ -1643,6 +1643,16 @@
 		)
 		(uuid "cfac1ec6-a37c-4d66-b907-1706a5067647")
 	)
+	(polyline
+		(pts
+			(xy 102.108 29.464) (xy 95.758 68.072)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e1b29c0a-833d-45e0-bb62-120a849ee96b")
+	)
 	(wire
 		(pts
 			(xy 124.46 41.91) (xy 124.46 45.72)
@@ -1664,8 +1674,8 @@
 		(uuid "eef23b0a-7fac-4005-ace8-43e8f63ae6e4")
 	)
 	(rectangle
-		(start 36.83 31.75)
-		(end 171.958 101.6)
+		(start 33.274 21.59)
+		(end 171.958 133.858)
 		(stroke
 			(width 0)
 			(type default)
@@ -1686,6 +1696,17 @@
 		)
 		(uuid "1c1cc882-75aa-428b-8079-01ae147c04b5")
 	)
+	(text "R value defined by 12V and optocoupler.\n Using required series R for led\n as R for lowpass at the same time.\n  -> cant change value much"
+		(exclude_from_sim no)
+		(at 101.6 28.702 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "2b488e45-0ef0-4d97-a24d-0bafc2671f07")
+	)
 	(text "TVS:\nclamp to 12V\nshort negative voltages"
 		(exclude_from_sim no)
 		(at 94.488 89.916 0)
@@ -1699,7 +1720,7 @@
 	)
 	(text "Digital input (switch to GND)"
 		(exclude_from_sim no)
-		(at 63.754 36.068 0)
+		(at 61.468 25.908 0)
 		(effects
 			(font
 				(size 2.2 2.2)
@@ -1719,6 +1740,17 @@
 			(justify left)
 		)
 		(uuid "a6a9ef32-49ba-4691-a08e-162604d0a884")
+	)
+	(text "Notes made during testing this circuit:\n\n- Lowpass is extremely asymetric due to C additionally directly charging up over optocoupler led.\n	-> better split R into two (one part between C and LED as well)?\n\n- R_filter = 3k3,  C=10uF:\n	- 3.8ms delay turning on (switch closes to GND)\n	- 0.1ms delay turning off (switch opens)\n\n- R = 2k2, C = 10uF\n	- 2.5ms delay turning on\n	- 0.5ms delay turning off\n\n- switch bouncing is filtered well when using >= 1uF"
+		(exclude_from_sim no)
+		(at 37.338 117.094 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "cbac9d40-0fb2-4e97-9ee4-aa8e74fc3302")
 	)
 	(text "Uf=1V  If=5mA\n-> 2k2 for 12V"
 		(exclude_from_sim no)
@@ -2338,7 +2370,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_THT:C_Disc_D7.0mm_W2.5mm_P5.00mm"
+		(property "Footprint" "capacitor_libJonny:C_DualType__Disc-7.0x2.5mm-P5mm__Elko-D5mm-P2.5mm"
 			(at 112.7252 80.01 0)
 			(effects
 				(font
