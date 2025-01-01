@@ -50,6 +50,7 @@ fi
 
 # Define folders
 INPUT_DIR="../export"
+INPUT_DIR_MILL_ISOLATION="../export/gndPlanesOnly"
 OUTPUT_DIR="./out"
 OUTPUT_DIR_TEMP="/tmp/pcb2gcode_out"
 
@@ -59,6 +60,10 @@ FRONT_FILE="$INPUT_DIR/${PROJECT_NAME}-F_Cu.gbr"
 OUTLINE_FILE="$INPUT_DIR/${PROJECT_NAME}-Edge_Cuts.gbr"
 PTH_DRILL_FILE="$INPUT_DIR/${PROJECT_NAME}-PTH.drl"
 
+# files for pass for milling away copper areas
+MILL_AWAY_COPPER__BACK_FILE="$INPUT_DIR/gndPlanesOnly/${PROJECT_NAME}-B_Cu.gbr"
+MILL_AWAY_COPPER__FRONT_FILE="$INPUT_DIR/gndPlanesOnly/${PROJECT_NAME}-F_Cu.gbr"
+
 NPTH_DRILL_FILE="$INPUT_DIR/${PROJECT_NAME}-NPTH.drl"
 TEXT_FRONT_FILE="$INPUT_DIR/${PROJECT_NAME}-User_9.gbr"
 
@@ -67,6 +72,7 @@ TEXT_FRONT_OUT_FILE="text-front.ngc"
 
 CONFIG_FILE="./millproject"
 CONFIG_FILE_TEXT="./millproject_text"
+CONFIG_FILE_MILL_AWAY_COPPER="./millproject_millAwayCopper"
 TEMP_CONFIG=$(mktemp)
 
 # Additional options for pcb2gcode runs
@@ -76,8 +82,11 @@ PCB2GCODE_OPTIONS="2>&1 | grep -v 'Unsupported'" #-> do not output erros like:
 
 
 # Create output directory if it doesn't exist
+echo "clearing output dir..."
+rm -rfv $OUTPUT_DIR/* # clear previous output
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR_TEMP"
+
 
 # Function to append file paths to config file
 append_file_paths() {
@@ -101,6 +110,7 @@ check_file() {
 
 
 # Run first pass: Generate front, back, outline, and PTH drilling
+    echo -e "\n\n\n"
     echo "================================================="
     echo "=== initiating first run (front, back, holes) ==="
     echo "================================================="
@@ -116,6 +126,7 @@ fi
 
 
 # Run second pass: Generate NPTH drilling only
+    echo -e "\n\n\n"
     echo "==========================================="
     echo "=== initiating second run for NPTH only ==="
     echo "==========================================="
@@ -140,10 +151,13 @@ fi
 
 
 # Run third pass: engrave text (separate layer) only
+    echo -e "\n\n\n"
     echo "==========================================="
     echo "=== initiating third run (engrave text) ==="
     echo "==========================================="
 if check_file "$TEXT_FRONT_FILE"; then
+    rm -rf "$OUTPUT_DIR_TEMP"
+mkdir -p "$OUTPUT_DIR_TEMP"
     cp "$CONFIG_FILE_TEXT" "$TEMP_CONFIG"
     echo "==> run.sh: Appending text gerber file to config..."
     # rename original drill debug output image
@@ -165,10 +179,50 @@ fi
 
 
 
+# Run 4th pass: engrave text (separate layer) only
+    echo -e "\n\n\n"
+    echo "====================================================="
+    echo "=== initiating third run (mill away copper areas) ==="
+    echo "====================================================="
+if check_file "$MILL_AWAY_COPPER__BACK_FILE"; then
+    rm -rf "$OUTPUT_DIR_TEMP"
+mkdir -p "$OUTPUT_DIR_TEMP"
+    cp "$CONFIG_FILE_MILL_AWAY_COPPER" "$TEMP_CONFIG"
+    echo "back=$MILL_AWAY_COPPER__BACK_FILE" >> "$TEMP_CONFIG"
+    echo "front=$MILL_AWAY_COPPER__FRONT_FILE" >> "$TEMP_CONFIG"
+    echo "outline=$OUTLINE_FILE" >> "$TEMP_CONFIG"
+    echo "output-dir=$OUTPUT_DIR_TEMP" >> "$TEMP_CONFIG"
+
+    #cat "$TEMP_CONFIG"
+    pcb2gcode --config "$TEMP_CONFIG"
+    echo "==> run.sh: Copy wanted files from temp folder"
+
+    cp "$OUTPUT_DIR_TEMP"/front.ngc "$OUTPUT_DIR"/MILL-AWAY-COPPER_front.ngc
+    cp "$OUTPUT_DIR_TEMP"/back.ngc "$OUTPUT_DIR"/MILL-AWAY-COPPER_back.ngc
+
+    for i in $(seq 0 8); do
+        # Processed front files
+        if [ -f "$OUTPUT_DIR_TEMP/processed_front_final_$i.svg" ]; then
+            cp "$OUTPUT_DIR_TEMP/processed_front_final_$i.svg" "$OUTPUT_DIR/MILL-AWAY-COPPER_front_processed-final_$i.svg"
+        fi
+
+        # Processed back files
+        if [ -f "$OUTPUT_DIR_TEMP/processed_back_final_$i.svg" ]; then
+            cp "$OUTPUT_DIR_TEMP/processed_back_final_$i.svg" "$OUTPUT_DIR/MILL-AWAY-COPPER_back_processed-final_$i.svg"
+        fi
+    done 
+
+    echo "==> run.sh:  pass for milling away copper areas finished"
+else
+    echo "==> run.sh: Skipping third pass due to missing text-layer file: $MILL_AWAY_COPPER_BACK_FILE"
+fi
+
+
+
 
 # Clean up temporary config file
 rm -f "$TEMP_CONFIG"
-rm -rf "$OUTPUT_DIR_TEMP"
+#rm -rf "$OUTPUT_DIR_TEMP"
 # Delete unwanted files
 echo "==> run.sh: Deleting unwanted files..."
 rm -f "$OUTPUT_DIR"/*contentions*.svg \

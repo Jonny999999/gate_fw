@@ -65,7 +65,7 @@ offset=-0.149 #text line width is 0.3 so offset -0.14 is minimun otherwise crash
 #zwork=-0.400 #using 30degree cutter calculates to ~0.2mm line
 zwork=-0.200
 ######################################################
-mill-infeed=0.1 #maximum cutting depth per pass (multiple passes when zwork larger)
+mill-infeed=0.3 #maximum cutting depth per pass (multiple passes when zwork larger)
 
 
 
