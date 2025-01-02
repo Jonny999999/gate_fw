@@ -1,3 +1,32 @@
+# V2.0 is currently in progress
+Currently working on a full rework of this project.  
+- custom pcb
+  - isolate microcontroller from long cables
+- control motors with VFDs instead of Relays
+- firmware rework or rewrite
+
+<br>
+
+### pcb_v2.0-isolated-gate-control
+- **[KiCad Project](pcb_v2.0-isolated-gate-control/)**
+- **[Schematic.pdf](pcb_v2.0-isolated-gate-control/export/schematic.pdf)**
+- **[G-code for Isolation Milling](pcb_v2.0-isolated-gate-control/pcb2gcode)**
+
+Schematic + layout preview:  
+<p align="center">
+  <a href="pcb_v2.0-isolated-gate-control/export/schematic.pdf">
+    <img src="pcb_v2.0-isolated-gate-control/export/schematic.svg" width="50%" alt="Schematic"/>
+  </a>
+  <img src="pcb_v2.0-isolated-gate-control/export/layout.jpg" width="40%" alt="PCB Layout"/>
+</p>
+
+  
+<br>
+
+Rest of this document is the readme of V1.1:
+
+---
+
 Firmware for an automated sliding gate. Documentation: https://pfusch.zone/automated-sliding-gate
 
 # Photos
