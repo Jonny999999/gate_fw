@@ -9833,7 +9833,7 @@
 	)
 	(wire
 		(pts
-			(xy 306.07 80.01) (xy 306.07 78.74)
+			(xy 306.07 80.01) (xy 306.07 71.12)
 		)
 		(stroke
 			(width 0)
@@ -10543,7 +10543,7 @@
 	)
 	(wire
 		(pts
-			(xy 304.8 80.01) (xy 306.07 80.01)
+			(xy 306.07 80.01) (xy 304.8 80.01)
 		)
 		(stroke
 			(width 0)
@@ -12642,7 +12642,7 @@
 		)
 		(uuid "30a0db13-b3a8-49eb-b05d-2c4bf84abdab")
 	)
-	(text "\n  -[x] test if light barriers pull down when obstructed or free \n        -> DONE: they pull to GND when obstructed -> no circuit necessary, connect both in parallel\n\n  -[x] measure light barrier standby current, if high add circuit to enable only when closing\n	 -> DONE:\n	Photoelectric switch 12-24V NPN version https://www.aliexpress.com/item/1005001615723145.html\n		- current when obstructed: 6mA\n 		- current when continous: <1mA (0.000A)\n		- pulls low when obstructed\n		- wires: brown=12V, blue=GND, black=collector\n    -> circuit for cutting power added anyways\n\n  -[x] test esp32 board with isolated supply + diode\n	- when starting wifi at boot draws ~250 mA power insufficient -> boot loop\n    - when adden 2 x 2200 uF C after diode to buffer the peak it works reliably\n	- when running with wifi on draws ~125 mA continous\n    - => add additional C + prepare footprint for second DC DC converter inparallel?\n\n  -[x] test digital input circuit (lowpass+optocoupler work?)\n	- works well, lowpass turning off (open switch, pulls up to 12V) is faster than expected though \n	  due to RC charging up over led\n\n  -[x] test / evaluate optocoupler LED R with 3v3 => 330 Ohm -> 5 mA"
+	(text "\n  -[x] test if light barriers pull down when obstructed or free \n        -> DONE: they pull to GND when obstructed -> no circuit necessary, connect both in parallel\n\n  -[x] measure light barrier standby current, if high add circuit to enable only when closing\n	 -> DONE:\n	Photoelectric switch 12-24V NPN version https://www.aliexpress.com/item/1005001615723145.html\n		- current when obstructed: 6mA\n 		- current when continous: <1mA (0.000A)\n		- pulls low when obstructed\n		- wires: brown=12V, blue=GND, black=collector\n    -> circuit for cutting power added anyways\n\n  -[x] test esp32 board with isolated supply + diode\n	- when starting wifi at boot draws ~250 mA power insufficient -> boot loop\n    - when adding 2 x 2200 uF C after diode to buffer the peak it works reliably\n	- when running with wifi on draws ~125 mA continous\n    - => add additional C (done) + prepare footprint for second DC DC converter in parallel?\n\n  -[x] test digital input circuit (lowpass+optocoupler work?)\n	- works well, lowpass turning off (open switch, pulls up to 12V) is faster than expected though \n	  due to RC charging up over led, see notes schematic sub-sheet\n\n  -[x] test / evaluate optocoupler LED R with 3v3 => 330 Ohm -> 5 mA"
 		(exclude_from_sim no)
 		(at 316.23 229.362 0)
 		(effects
@@ -12937,9 +12937,9 @@
 		)
 		(uuid "e50b1d56-07df-4884-acb1-872ea3728921")
 	)
-	(text "TODO list"
+	(text "TODO"
 		(exclude_from_sim no)
-		(at 326.644 204.978 0)
+		(at 323.596 204.978 0)
 		(effects
 			(font
 				(size 2.2 2.2)
@@ -18127,7 +18127,7 @@
 	)
 	(symbol
 		(lib_id "power:+24V")
-		(at 306.07 78.74 0)
+		(at 306.07 71.12 0)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -18135,7 +18135,7 @@
 		(dnp no)
 		(uuid "5fbbf9bb-8cae-4170-a545-1fffd2bd3da2")
 		(property "Reference" "#PWR0131"
-			(at 306.07 82.55 0)
+			(at 306.07 74.93 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18144,7 +18144,7 @@
 			)
 		)
 		(property "Value" "+12V filtered"
-			(at 305.054 74.168 0)
+			(at 305.308 67.564 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18152,7 +18152,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 306.07 78.74 0)
+			(at 306.07 71.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18161,7 +18161,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 306.07 78.74 0)
+			(at 306.07 71.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -18170,7 +18170,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"+24V\""
-			(at 306.07 78.74 0)
+			(at 306.07 71.12 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -23872,8 +23872,8 @@
 				(justify right)
 			)
 		)
-		(property "Value" "TVS 28V (starts 31V)"
-			(at 76.708 38.608 90)
+		(property "Value" "TVS P6KE15A (12.8V)"
+			(at 79.248 39.878 90)
 			(effects
 				(font
 					(size 1.27 1.27)

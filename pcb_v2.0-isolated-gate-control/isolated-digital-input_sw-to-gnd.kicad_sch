@@ -1455,7 +1455,7 @@
 	)
 	(wire
 		(pts
-			(xy 90.17 88.9) (xy 90.17 92.71)
+			(xy 90.17 85.09) (xy 90.17 92.71)
 		)
 		(stroke
 			(width 0)
@@ -1555,7 +1555,7 @@
 	)
 	(wire
 		(pts
-			(xy 90.17 69.85) (xy 90.17 81.28)
+			(xy 90.17 69.85) (xy 90.17 77.47)
 		)
 		(stroke
 			(width 0)
@@ -1685,7 +1685,7 @@
 		)
 		(uuid 146b6a0a-2ec2-4d4e-8a51-569607246bd4)
 	)
-	(text "Note: switch symbol only for \nillustrating the connection \n(nopop due to #in ref)"
+	(text "Note: switch symbol only for \nillustrating the connection \n(nopop due to '#' in ref)"
 		(exclude_from_sim no)
 		(at 41.402 57.912 0)
 		(effects
@@ -1696,7 +1696,7 @@
 		)
 		(uuid "1c1cc882-75aa-428b-8079-01ae147c04b5")
 	)
-	(text "R value defined by 12V and optocoupler.\n Using required series R for led\n as R for lowpass at the same time.\n  -> cant change value much"
+	(text "R value defined by 12V and optocoupler.\n Using required series R for led\n as R for lowpass at the same time.\n  -> cant change value much to tune lowpass"
 		(exclude_from_sim no)
 		(at 101.6 28.702 0)
 		(effects
@@ -1741,7 +1741,7 @@
 		)
 		(uuid "a6a9ef32-49ba-4691-a08e-162604d0a884")
 	)
-	(text "Notes made during testing this circuit:\n\n- Lowpass is extremely asymetric due to C additionally directly charging up over optocoupler led.\n	-> better split R into two (one part between C and LED as well)?\n\n- R_filter = 3k3,  C=10uF:\n	- 3.8ms delay turning on (switch closes to GND)\n	- 0.1ms delay turning off (switch opens)\n\n- R = 2k2, C = 10uF\n	- 2.5ms delay turning on\n	- 0.5ms delay turning off\n\n- switch bouncing is filtered well when using >= 1uF"
+	(text "Notes made during testing this circuit:\n\n- Lowpass is extremely asymetric due to C additionally directly charging up over optocoupler led.\n	-> better split R into two (one part between C and LED as well)?\n\n- R_filter = 3k3,  C = 10uF:\n	- 3.8ms delay turning on (switch closes to GND)\n	- 0.1ms delay turning off (switch opens)\n\n- R = 2k2, C = 10uF\n	- 2.5ms delay turning on\n	- 0.5ms delay turning off\n\n- switch bouncing is filtered well when using >= 1uF"
 		(exclude_from_sim no)
 		(at 37.338 117.094 0)
 		(effects
@@ -3238,7 +3238,7 @@
 	)
 	(symbol
 		(lib_id "Diode:PTVS5V0Z1USK")
-		(at 90.17 85.09 270)
+		(at 90.17 81.28 270)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -3246,7 +3246,7 @@
 		(dnp no)
 		(uuid "fd8edc5a-efd7-4e9f-8071-ed3b8023ab8a")
 		(property "Reference" "D23"
-			(at 92.71 83.566 90)
+			(at 92.71 79.756 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3254,8 +3254,8 @@
 				(justify left)
 			)
 		)
-		(property "Value" "TVS 1.5KE30A (starts 28.5V)"
-			(at 60.452 85.598 90)
+		(property "Value" "TVS P6KE15A (12.8V)"
+			(at 67.31 81.534 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3264,7 +3264,7 @@
 			)
 		)
 		(property "Footprint" "Diode_THT:D_DO-41_SOD81_P12.70mm_Horizontal"
-			(at 85.725 85.09 0)
+			(at 85.725 81.28 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3273,7 +3273,7 @@
 			)
 		)
 		(property "Datasheet" "https://www.conrad.de/de/p/littelfuse-tvs-diode-1-5ke30a-do-201-28-5-v-1-5-kw-140796.html"
-			(at 90.17 85.09 0)
+			(at 90.17 81.28 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3282,7 +3282,7 @@
 			)
 		)
 		(property "Description" "5V, 1200W TVS unidirectional diode, DSN1608-2"
-			(at 90.17 85.09 0)
+			(at 90.17 81.28 0)
 			(effects
 				(font
 					(size 1.27 1.27)
