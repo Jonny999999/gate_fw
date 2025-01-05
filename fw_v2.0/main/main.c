@@ -110,12 +110,12 @@ void ioTest_setAllOutputsLow() {
 
 void ioTest_setOutputsToInputStates() {
     ESP_LOGI("TEST", "Passing through inputs to outputs... \n (order: screw-terminals-inputs: left-to-right => screw-terminals-outputs-openDrain: left-to-right)...");
-    gpio_set_level(CONFIG_RELAY_VFD1_GPIO, gpio_get_level(CONFIG_REMOTE_OPEN_GPIO));
-    gpio_set_level(CONFIG_RELAY_VFD2_GPIO, gpio_get_level(CONFIG_REMOTE_CLOSE_GPIO));
-    gpio_set_level(CONFIG_BUZZER_GPIO, gpio_get_level(CONFIG_BTN_OPEN_GPIO));
-    gpio_set_level(CONFIG_LIGHTBARRIER_EN_GPIO, gpio_get_level(CONFIG_BTN_CLOSE_GPIO));
-    gpio_set_level(CONFIG_SERVO_ENABLE_GPIO, gpio_get_level(CONFIG_SW_G1_CLOSED_GPIO));
-    gpio_set_level(CONFIG_LED_GPIO, gpio_get_level(CONFIG_SW_G1_OPEN_GPIO));
+    gpio_set_level(CONFIG_RELAY_VFD1_GPIO, !gpio_get_level(CONFIG_REMOTE_OPEN_GPIO));
+    gpio_set_level(CONFIG_RELAY_VFD2_GPIO, !gpio_get_level(CONFIG_REMOTE_CLOSE_GPIO));
+    gpio_set_level(CONFIG_BUZZER_GPIO, !gpio_get_level(CONFIG_BTN_OPEN_GPIO));
+    gpio_set_level(CONFIG_LIGHTBARRIER_EN_GPIO, !gpio_get_level(CONFIG_BTN_CLOSE_GPIO));
+    gpio_set_level(CONFIG_SERVO_ENABLE_GPIO, !gpio_get_level(CONFIG_ENCODER1_GPIO));
+    gpio_set_level(CONFIG_LED_GPIO, !gpio_get_level(CONFIG_SW_G1_OPEN_GPIO));
 }
 
 
@@ -183,7 +183,7 @@ void app_main(void)
     {
         ioTest_readAllInputs();
         ioTest_setOutputsToInputStates();
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 
 

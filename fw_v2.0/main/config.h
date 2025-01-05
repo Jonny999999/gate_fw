@@ -7,7 +7,7 @@
 //==========================================
 #define CONFIG_BAUD_RATE            9600
 #define CONFIG_RS485_DIR_GPIO       4
-#define CONFIG_RS485_TX_GPIO        22
+#define CONFIG_RS485_TX_GPIO        17
 #define CONFIG_RS485_RX_GPIO        16
 #define CONFIG_RS485_RX_INVERTED    1 // 1 if RX signal is inverted, 0 otherwise
 
