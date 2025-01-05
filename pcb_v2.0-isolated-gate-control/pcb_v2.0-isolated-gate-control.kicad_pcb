@@ -31618,7 +31618,7 @@
 	(footprint "Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical"
 		(layer "F.Cu")
 		(uuid "70545d3f-d989-487e-9f5d-e8a92a0e83a7")
-		(at 75.1 85.2)
+		(at 75.7 86.35)
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "TP10"
@@ -31874,7 +31874,7 @@
 	(footprint "mountingHoles_libJonny:MountingHole_2.2mm_NPTH-with-pad_DRC-clearance-error"
 		(layer "F.Cu")
 		(uuid "748fc56a-533a-4ecf-96c0-93f12d8ab4e9")
-		(at 78.9 85.2)
+		(at 79.15 85.3)
 		(descr "Mounting Hole 2.2mm, M2, ISO14580")
 		(tags "mounting hole 2.2mm m2 iso14580")
 		(property "Reference" "H14"
@@ -64088,7 +64088,7 @@
 	(footprint "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm"
 		(layer "F.Cu")
 		(uuid "e76b1ced-9e5c-4e04-9079-0b22bd07c572")
-		(at 69 84.582)
+		(at 69.7 84.6)
 		(descr "CP, Radial series, Radial, pin pitch=2.50mm, , diameter=6.3mm, Electrolytic Capacitor")
 		(tags "CP Radial series Radial pin pitch 2.50mm  diameter 6.3mm Electrolytic Capacitor")
 		(property "Reference" "C9"
@@ -72233,6 +72233,19 @@
 		(layer "User.7")
 		(uuid "ecd6ef2d-b11a-44eb-a423-4d890b097274")
 	)
+	(gr_text "Changelog since Tag {dblquote}pcb-for-V2-milled{dblquote}:\n - fix swapped 12V/GND testpoint text\n - add missing testpoint text: 5V, isolated-GND,\n - reduce title text thickness from 0.4 to 0.35\n - more space between EN-C and esp32"
+		(at 211.1 38.55 0)
+		(layer "User.2")
+		(uuid "8daa8311-6fa8-4c18-879a-ab423e56e5bc")
+		(effects
+			(font
+				(size 2 2)
+				(thickness 0.3)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+	)
 	(gr_text "Layer User7: Marked pads to solder on top side"
 		(at 37.592 145.288 0)
 		(layer "User.3")
@@ -72249,6 +72262,19 @@
 		(at 181.991 64.0842 0)
 		(layer "User.9")
 		(uuid "0188dd67-392e-42d4-831e-ce00c27045d9")
+		(effects
+			(font
+				(size 1.3 1.3)
+				(thickness 0.3)
+				(bold yes)
+			)
+			(justify bottom)
+		)
+	)
+	(gr_text "5V"
+		(at 130.95 56.2 0)
+		(layer "User.9")
+		(uuid "08e293e3-d852-4d60-897b-6418791b1839")
 		(effects
 			(font
 				(size 1.3 1.3)
@@ -72278,8 +72304,7 @@
 		(effects
 			(font
 				(size 2.2 2.2)
-				(thickness 0.4)
-				(bold yes)
+				(thickness 0.35)
 			)
 			(justify left bottom)
 		)
@@ -72635,6 +72660,19 @@
 			(justify bottom)
 		)
 	)
+	(gr_text "GND"
+		(at 75.75 89.6 0)
+		(layer "User.9")
+		(uuid "e34310c9-412f-42c9-9cb7-5247f12aa613")
+		(effects
+			(font
+				(size 1.3 1.3)
+				(thickness 0.3)
+				(bold yes)
+			)
+			(justify bottom)
+		)
+	)
 	(gr_text "Fuse-PCB"
 		(at 191.897 42.8498 90)
 		(layer "User.9")
@@ -72648,8 +72686,8 @@
 			(justify left bottom)
 		)
 	)
-	(gr_text "GND 12V"
-		(at 147.7772 30.1244 0)
+	(gr_text "12V GND"
+		(at 147.85 29.95 0)
 		(layer "User.9")
 		(uuid "f170891c-a0ce-4005-9e4a-984fc2d768f9")
 		(effects
@@ -72783,12 +72821,20 @@
 		(uuid "c622915b-1bbc-410f-ba66-fa1f92983c1c")
 	)
 	(segment
-		(start 69 84.582)
+		(start 69.7 84.6)
+		(end 69.682 84.582)
+		(width 0.7)
+		(layer "B.Cu")
+		(net 2)
+		(uuid "4d9b3ff2-57b4-431e-83fa-bbdf647b5913")
+	)
+	(segment
+		(start 69.682 84.582)
 		(end 65.565903 84.582)
 		(width 0.7)
 		(layer "B.Cu")
 		(net 2)
-		(uuid "5e132f24-2458-4bbe-8614-22751d8f9a1d")
+		(uuid "a6da1edd-d5ef-4ec7-8a49-527422fa6be9")
 	)
 	(via
 		(at 43.688 51.562)
