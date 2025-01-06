@@ -153,6 +153,12 @@ void modbus_task(void *arg)
         ESP_LOGW(TAG, "reading temperature...");
         status = read_modbus_register(0x01, 10, &reg_value);
         ESP_LOGW(TAG, "  temperature: %d\n", reg_value);
+        if (status == 0) //beep at success
+        {
+            gpio_set_level(CONFIG_BUZZER_GPIO, 1);
+            vTaskDelay(pdMS_TO_TICKS(20));
+            gpio_set_level(CONFIG_BUZZER_GPIO, 0);
+        }
 
         //TODO verify status is 0 (success) before using the value
 
@@ -177,18 +183,18 @@ void app_main(void)
     // initialize gpio pins as inputs/outputs
     configure_gpio_pins();
 
-    // GPIO Test
-    ESP_LOGW(TAG, "starting GPIO test");
-    while (1)
-    {
-        ioTest_readAllInputs();
-        ioTest_setOutputsToInputStates();
-        vTaskDelay(pdMS_TO_TICKS(300));
-    }
+    //// GPIO Test
+    //ESP_LOGW(TAG, "starting GPIO test");
+    //while (1)
+    //{
+    //    ioTest_readAllInputs();
+    //    ioTest_setOutputsToInputStates();
+    //    vTaskDelay(pdMS_TO_TICKS(300));
+    //}
 
 
     // MODBUS Test
-    esp_log_level_set("Modbus-RTU", ESP_LOG_INFO);
+    esp_log_level_set("Modbus-RTU", ESP_LOG_DEBUG);
     // Configure UART
     modbus_init();
 

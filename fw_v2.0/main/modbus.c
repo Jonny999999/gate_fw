@@ -9,8 +9,11 @@ static const char *TAG = "Modbus-RTU";
 #define RTS_PIN CONFIG_RS485_DIR_GPIO // DE pin
 #define BAUD_RATE CONFIG_BAUD_RATE
 #define BUF_SIZE 256
-#define INVERT_TX_RTS_SIGNAL 0
+
+// configure to invert RX(in), TX(out) or DIR(out) signals
 #define INVERT_RX_SIGNAL CONFIG_RS485_RX_INVERTED
+#define INVERT_TX_SIGNAL 0
+#define INVERT_DIR_SIGNAL 0 //RTS
 
 void modbus_init(){
     uart_config_t uart_config = {
@@ -29,7 +32,9 @@ void modbus_init(){
 // invert out pins (due to mosfet level shifter)
     ESP_ERROR_CHECK(uart_set_line_inverse(
         UART_NUM,
-        (UART_SIGNAL_RXD_INV && INVERT_RX_SIGNAL) | (UART_SIGNAL_RTS_INV && INVERT_TX_RTS_SIGNAL)
+        (INVERT_RX_SIGNAL ? UART_SIGNAL_RXD_INV : 0) |
+        (INVERT_DIR_SIGNAL ? UART_SIGNAL_RTS_INV : 0) |
+        (INVERT_TX_SIGNAL ? UART_SIGNAL_TXD_INV : 0)
     ));
 
     ESP_LOGW(TAG, "Modbus communication initialized");
