@@ -8,13 +8,11 @@
 
 #include "config.h"
 #include "modbus.h"
+#include "iotest.h"
 
 
 static const char *TAG = "main";
 
-
-#include "driver/gpio.h"
-#include "config.h"
 
 // Configure all GPIO pins according to config.h
 void configure_gpio_pins() {
@@ -64,73 +62,19 @@ void configure_gpio_pins() {
 
 
 
-void ioTest_readAllInputs() {
-    ESP_LOGI("TEST", "Reading input pins...");
-    ESP_LOGI("TEST", "SW_G1_OPEN: %d", gpio_get_level(CONFIG_SW_G1_OPEN_GPIO));
-    ESP_LOGI("TEST", "SW_G1_CLOSED: %d", gpio_get_level(CONFIG_SW_G1_CLOSED_GPIO));
-    ESP_LOGI("TEST", "SW_G2_OPEN: %d", gpio_get_level(CONFIG_SW_G2_OPEN_GPIO));
-    ESP_LOGI("TEST", "SW_G2_CLOSED: %d", gpio_get_level(CONFIG_SW_G2_CLOSED_GPIO));
-    ESP_LOGI("TEST", "ENCODER1: %d", gpio_get_level(CONFIG_ENCODER1_GPIO));
-    ESP_LOGI("TEST", "ENCODER2: %d", gpio_get_level(CONFIG_ENCODER2_GPIO));
-    ESP_LOGI("TEST", "BTN_OPEN: %d", gpio_get_level(CONFIG_BTN_OPEN_GPIO));
-    ESP_LOGI("TEST", "BTN_CLOSE: %d", gpio_get_level(CONFIG_BTN_CLOSE_GPIO));
-    ESP_LOGI("TEST", "REMOTE_OPEN: %d", gpio_get_level(CONFIG_REMOTE_OPEN_GPIO));
-    ESP_LOGI("TEST", "REMOTE_CLOSE: %d", gpio_get_level(CONFIG_REMOTE_CLOSE_GPIO));
-    ESP_LOGI("TEST", "LIGHTBARRIER: %d", gpio_get_level(CONFIG_LIGHTBARRIER_GPIO));
-    ESP_LOGI("TEST", "FN_BUTTON: %d", gpio_get_level(CONFIG_FN_BUTTON_GPIO));
-    ESP_LOGI("TEST", "======================");
-}
-
-
-void ioTest_setAllOutputsHigh() {
-    ESP_LOGI("TEST", "Turning all outputs ON...");
-    gpio_set_level(CONFIG_SERVO_ENABLE_GPIO, 1);
-    gpio_set_level(CONFIG_LIGHTBARRIER_EN_GPIO, 1);
-    gpio_set_level(CONFIG_LED_GPIO, 1);
-    gpio_set_level(CONFIG_BUZZER_GPIO, 1);
-    gpio_set_level(CONFIG_RELAY_VFD1_GPIO, 1);
-    gpio_set_level(CONFIG_RELAY_VFD2_GPIO, 1);
-    gpio_set_level(CONFIG_SERVO_PWM_GPIO, 1);
-    gpio_set_level(CONFIG_RS485_DIR_GPIO, 1);
-}
-
-    
-void ioTest_setAllOutputsLow() {
-    ESP_LOGI("TEST", "Turning all outputs OFF...");
-    gpio_set_level(CONFIG_SERVO_ENABLE_GPIO, 0);
-    gpio_set_level(CONFIG_LIGHTBARRIER_EN_GPIO, 0);
-    gpio_set_level(CONFIG_LED_GPIO, 0);
-    gpio_set_level(CONFIG_BUZZER_GPIO, 0);
-    gpio_set_level(CONFIG_RELAY_VFD1_GPIO, 0);
-    gpio_set_level(CONFIG_RELAY_VFD2_GPIO, 0);
-    gpio_set_level(CONFIG_SERVO_PWM_GPIO, 0);
-    gpio_set_level(CONFIG_RS485_DIR_GPIO, 0);
-}
-
-
-void ioTest_setOutputsToInputStates() {
-    ESP_LOGI("TEST", "Passing through inputs to outputs... \n (order: screw-terminals-inputs: left-to-right => screw-terminals-outputs-openDrain: left-to-right)...");
-    gpio_set_level(CONFIG_RELAY_VFD1_GPIO, !gpio_get_level(CONFIG_REMOTE_OPEN_GPIO));
-    gpio_set_level(CONFIG_RELAY_VFD2_GPIO, !gpio_get_level(CONFIG_REMOTE_CLOSE_GPIO));
-    gpio_set_level(CONFIG_BUZZER_GPIO, !gpio_get_level(CONFIG_BTN_OPEN_GPIO));
-    gpio_set_level(CONFIG_LIGHTBARRIER_EN_GPIO, !gpio_get_level(CONFIG_BTN_CLOSE_GPIO));
-    gpio_set_level(CONFIG_SERVO_ENABLE_GPIO, !gpio_get_level(CONFIG_ENCODER1_GPIO));
-    gpio_set_level(CONFIG_LED_GPIO, !gpio_get_level(CONFIG_SW_G1_OPEN_GPIO));
-}
-
-
-
-
-
 
 
 // Task to test Modbus communication with VFD
-void modbus_task(void *arg)
+void testModbus_task(void *arg)
 {
     ESP_LOGW(TAG, "sending stop command");
     send_modbus_command(0x01, 0x06, 0x0003, 2);
+    int i=10;
     while (1)
     {
+        // increment variable to set varying vfd frequency
+        i += 50;
+
         // Example: Turn on VFD (slave address 0x01, function code 0x06, register 0x0003, value 0x0001)
 
         // send start command
@@ -156,7 +100,7 @@ void modbus_task(void *arg)
         if (status == 0) //beep at success
         {
             gpio_set_level(CONFIG_BUZZER_GPIO, 1);
-            vTaskDelay(pdMS_TO_TICKS(20));
+            vTaskDelay(pdMS_TO_TICKS(10));
             gpio_set_level(CONFIG_BUZZER_GPIO, 0);
         }
 
@@ -165,7 +109,7 @@ void modbus_task(void *arg)
 
         // set frequency
         ESP_LOGW(TAG, "sending setFreq cmd...");
-        status = send_modbus_command(0x01, 0x06, 0x0002, 100);
+        status = send_modbus_command(0x01, 0x06, 0x0002, i%500);
         ESP_LOGW(TAG, "  %s\n", status == 0 ? "success" : "failed");
         printf("=============\n");
         vTaskDelay(pdMS_TO_TICKS(2000));
@@ -177,28 +121,46 @@ void modbus_task(void *arg)
     }
 }
 
+
+
+
+
+//#define RUN_GPIO_TEST
+#define RUN_MODBUS_TEST
+
 void app_main(void)
 {
 
     // initialize gpio pins as inputs/outputs
     configure_gpio_pins();
 
-    //// GPIO Test
-    //ESP_LOGW(TAG, "starting GPIO test");
-    //while (1)
-    //{
-    //    ioTest_readAllInputs();
-    //    ioTest_setOutputsToInputStates();
-    //    vTaskDelay(pdMS_TO_TICKS(300));
-    //}
-
-
-    // MODBUS Test
-    esp_log_level_set("Modbus-RTU", ESP_LOG_DEBUG);
     // Configure UART
     modbus_init();
 
+    // set loglevel
+    esp_log_level_set("Modbus-RTU", ESP_LOG_INFO);
+    esp_log_level_set("IO-test", ESP_LOG_INFO);
+
+
+#ifdef RUN_MODBUS_TEST
+    // MODBUS Test
     // Start Modbus task for testing
     ESP_LOGW(TAG, "starting modbus task...");
-    xTaskCreate(modbus_task, "modbus_task", 4 * 2048, NULL, 10, NULL);
+    xTaskCreate(testModbus_task, "testModbus_task", 4 * 2048, NULL, 10, NULL);
+#endif
+
+
+#ifdef RUN_GPIO_TEST
+    // GPIO Test
+    ESP_LOGW(TAG, "starting GPIO test");
+    while (1)
+    {
+        ioTest_readAllInputs();
+        ioTest_setOutputsToInputStates();
+        vTaskDelay(pdMS_TO_TICKS(300));
+    }
+#endif
+
+
+
 }
