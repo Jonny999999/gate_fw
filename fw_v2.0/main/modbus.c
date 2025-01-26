@@ -64,7 +64,7 @@ uint16_t modbus_crc16(const uint8_t *data, uint8_t length)
 
 // Function to send a Modbus RTU frame
 // returns 0: success, -1: uart sending failed, -2: incorrect response from vfd
-int send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_t reg_addr, uint16_t value)
+esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_t reg_addr, uint16_t value)
 {
     int len;
     ESP_LOGD(TAG, "send_modbus_command: addr %d, func: %d, regAddr: %d, value: %d", slave_addr, function_code, reg_addr, value);
@@ -100,7 +100,7 @@ int send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_t reg_
     if (len == -1)
     {
         ESP_LOGE(TAG, "failed sending frame via UART");
-        return -1;
+        return ESP_FAIL;
     }
     ESP_LOGD(TAG, "sent %d bytes via uart", len);
 
@@ -129,16 +129,12 @@ int send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_t reg_
     else
     {
         ESP_LOGE(TAG, "send_modbus_command: Response does not match the request. Communication error!");
-        return -2;
+        return ESP_ERR_INVALID_RESPONSE;
     }
 }
 
-
-
-
 // Function to send a Modbus RTU request and receive response
-int read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *value)
-{
+esp_err_t read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *value) {
     int len;
     ESP_LOGD(TAG, "read_modbus_register: addr %d, regAddr: %d", slave_addr, reg_addr);
 
@@ -174,7 +170,7 @@ int read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *value)
     if (len == -1)
     {
         ESP_LOGE(TAG, "failed sending frame via UART");
-        return -1;
+        return ESP_FAIL;
     }
     ESP_LOGD(TAG, "Sent Modbus read request (%d bytes)", len);
 
@@ -195,9 +191,9 @@ int read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *value)
 
     // Validate response
     // 1. check if reponse has the expected size
-     if (len != 7) {
+    if (len != 7) {
         ESP_LOGE(TAG, "Failed to read Modbus response, response length is: %d, expected %d", len, 7);
-        return -1; // Error
+        return ESP_ERR_INVALID_SIZE;
     }
 
     // 2, crc must be correct for the received data
@@ -212,11 +208,11 @@ int read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *value)
     if (response[1] != 0x03)
     {
         ESP_LOGE(TAG, "Invalid function code in response: 0x%02X", response[1]);
-        return -3; // Invalid function code
+        return ESP_ERR_INVALID_RESPONSE;
     }
 
     // extract the register value
     *value = (response[3] << 8) | response[4];
     ESP_LOGD(TAG, "Read register value: %d", *value);
-    return 0; // Success
+    return ESP_OK;
 }

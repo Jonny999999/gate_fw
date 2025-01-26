@@ -1,3 +1,4 @@
+extern "C" {
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -6,9 +7,12 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 
-#include "config.h"
 #include "modbus.h"
 #include "iotest.h"
+#include "config.h"
+}
+
+#include "vfd.hpp"
 
 
 static const char *TAG = "main";
@@ -64,71 +68,11 @@ void configure_gpio_pins() {
 
 
 
-// Task to test Modbus communication with VFD
-void testModbus_task(void *arg)
-{
-    ESP_LOGW(TAG, "sending stop command");
-    send_modbus_command(0x01, 0x06, 0x0003, 2);
-    int i=10;
-    while (1)
-    {
-        // increment variable to set varying vfd frequency
-        i += 50;
-
-        // Example: Turn on VFD (slave address 0x01, function code 0x06, register 0x0003, value 0x0001)
-
-        // send start command
-        // ESP_LOGW(TAG, "sending start command");
-        // send_modbus_command(0x01, 0x06, 0x0003, 0x0001);
-        // vTaskDelay(pdMS_TO_TICKS(1000));
-
-        // read voltage
-        ESP_LOGW(TAG, "reading bus voltage...");
-        uint16_t reg_value = 0;
-        int status = read_modbus_register(0x01, 0x0008, &reg_value);
-        ESP_LOGW(TAG, "  voltage: %d\n", reg_value);
-
-        // read current
-        ESP_LOGW(TAG, "reading bus current...");
-        status = read_modbus_register(0x01, 0x0009, &reg_value);
-        ESP_LOGW(TAG, "  current: %d\n", reg_value);
-
-        // read temperature
-        ESP_LOGW(TAG, "reading temperature...");
-        status = read_modbus_register(0x01, 10, &reg_value);
-        ESP_LOGW(TAG, "  temperature: %d\n", reg_value);
-        if (status == 0) //beep at success
-        {
-            gpio_set_level(CONFIG_BUZZER_GPIO, 1);
-            vTaskDelay(pdMS_TO_TICKS(10));
-            gpio_set_level(CONFIG_BUZZER_GPIO, 0);
-        }
-
-        //TODO verify status is 0 (success) before using the value
-
-
-        // set frequency
-        ESP_LOGW(TAG, "sending setFreq cmd...");
-        status = send_modbus_command(0x01, 0x06, 0x0002, i%500);
-        ESP_LOGW(TAG, "  %s\n", status == 0 ? "success" : "failed");
-        printf("=============\n");
-        vTaskDelay(pdMS_TO_TICKS(2000));
-
-        // send stop command
-        // ESP_LOGW(TAG, "sending stop command");
-        // send_modbus_command(0x01, 0x06, 0x0003, 2);
-        // vTaskDelay(pdMS_TO_TICKS(3000));
-    }
-}
-
-
-
-
 
 //#define RUN_GPIO_TEST
 #define RUN_MODBUS_TEST
 
-void app_main(void)
+extern "C" void app_main(void)
 {
 
     // initialize gpio pins as inputs/outputs
@@ -140,13 +84,45 @@ void app_main(void)
     // set loglevel
     esp_log_level_set("Modbus-RTU", ESP_LOG_INFO);
     esp_log_level_set("IO-test", ESP_LOG_INFO);
+    esp_log_level_set("VFD", ESP_LOG_INFO);
 
 
 #ifdef RUN_MODBUS_TEST
-    // MODBUS Test
-    // Start Modbus task for testing
-    ESP_LOGW(TAG, "starting modbus task...");
-    xTaskCreate(testModbus_task, "testModbus_task", 4 * 2048, NULL, 10, NULL);
+
+// Create VFD instances
+    VFD vfd1(0x01); // VFD 1 with address 0x01
+    VFD vfd2(0x02); // VFD 2 with address 0x02
+
+    while (1)
+    {
+        uint16_t temperature;
+        float voltage, current;
+
+        // Control VFD 1
+        vfd1.setFrequency(20); // Set frequency to 200 Hz
+        vfd1.start();
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        vfd1.getVoltage(&voltage);
+        vfd1.getCurrent(&current);
+        vfd1.getTemperature(&temperature);
+        ESP_LOGI("Main", "VFD1 -> Voltage: %.1f V, Current: %.1f A, Temperature: %d C", voltage, current, temperature);
+        vfd1.stop();
+        vTaskDelay(pdMS_TO_TICKS(500));
+
+
+        //// Control VFD 2
+        //vfd2.setFrequency(10); // Set frequency to 150 Hz
+        //vfd2.start();
+        //vTaskDelay(pdMS_TO_TICKS(1500));
+        //vfd2.getVoltage(&voltage);
+        //vfd2.getCurrent(&current);
+        //vfd2.getTemperature(&temperature);
+        //ESP_LOGI("Main", "VFD2 -> Voltage: %d, Current: %d, Temperature: %d", voltage, current, temperature);
+        //vfd2.stop();
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+
 #endif
 
 
