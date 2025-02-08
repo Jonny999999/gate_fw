@@ -22,7 +22,7 @@ public:
     VFD(uint8_t modbusSlaveAddress);
 
     // Public API for controlling the VFD
-    esp_err_t start();                      // Start motor
+    esp_err_t start(bool directionFwd = true);                      // Start motor
     esp_err_t stop();                       // Stop motor
     esp_err_t setFrequency(uint16_t newFrequency_Hz);  // Set frequency (in Hz)
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "driver/gpio.h"
+
 // Assign GPIO pins and configure options in this file
 
 
@@ -13,16 +14,30 @@
 #define CONFIG_RS485_RX_INVERTED    1 // 1 if RX signal is inverted, 0 otherwise
 
 
+
 //===========================
 //===== Input GPIO pins =====
 //===========================
 // unless noted otherwise, all inputs are active LOW (switches wired to pull input to GND)
-#define CONFIG_SW_G1_OPEN_GPIO      GPIO_NUM_5  // Limit switch for Gate 1: Open (switch closed to GND (LOW) when gate is fully open)
-#define CONFIG_SW_G1_CLOSED_GPIO    GPIO_NUM_18   // Limit switch for Gate 1: Closed (switch OPEN (HIGH) when gate is fully closed)
+#define CONFIG_SW_G1_OPEN_GPIO      GPIO_NUM_5   // Limit switch for Gate 1: Open (switch closed to GND (LOW) when gate is fully open)
+#define CONFIG_SW_G1_CLOSED_GPIO    GPIO_NUM_18  // Limit switch for Gate 1: Closed (switch OPEN (HIGH) when gate is fully closed)
+#define CONFIG_SW_G2_OPEN_GPIO      GPIO_NUM_36  // Limit switch for Gate 2: Open (switch closed to GND (LOW) when gate is fully open)
+#define CONFIG_SW_G2_CLOSED_GPIO    GPIO_NUM_2   // Limit switch for Gate 2: Closed (switch open (HIGH) when gate is fully closed)
+
 #define CONFIG_FN_BUTTON_GPIO       GPIO_NUM_34  // Function button
+#define CONFIG_ENCODER1_GPIO        GPIO_NUM_35  // Encoder Gate 1 signal
+#define CONFIG_ENCODER2_GPIO        GPIO_NUM_32  // Encoder Gate 2 signal
+#define CONFIG_LIGHTBARRIER_GPIO    GPIO_NUM_39  // Light barrier input (NPN sensor pulls low when obstructed)
+
+#define CONFIG_BTN_OPEN_GPIO        GPIO_NUM_21  // Button Open
+#define CONFIG_BTN_CLOSE_GPIO       GPIO_NUM_19  // Button Close
+#define CONFIG_REMOTE_OPEN_GPIO     GPIO_NUM_23  // Remote Open signal
+#define CONFIG_REMOTE_CLOSE_GPIO    GPIO_NUM_22  // Remote Close signal
+
 // Logical inversion for specific signals
 #define CONFIG_SW_G1_CLOSED_INVERTED 1  // Gate 1 Closed signal is inverted (switch only open when gate is fully closed)
 #define CONFIG_SW_G2_CLOSED_INVERTED 1  // Gate 2 Closed signal is inverted (switch only open when gate is fully closed)
+
 
 
 //============================

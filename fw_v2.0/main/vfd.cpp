@@ -37,8 +37,9 @@ VFD::VFD(uint8_t slave_addr) : slave_addr(slave_addr), frequency(0), is_running(
 
 
 
-esp_err_t VFD::start() {
-    esp_err_t status = send_modbus_command(slave_addr, 0x06, VFD_REG_START_STOP, 0x0001);
+esp_err_t VFD::start(bool directionFwd) {
+    uint16_t reg_value = directionFwd ? 0x0001 : 0x0003; // 1=forward,  3=reverse,  2=stop
+    esp_err_t status = send_modbus_command(slave_addr, 0x06, VFD_REG_START_STOP, reg_value);
     if (status == ESP_OK) {
         is_running = true;
         ESP_LOGI(TAG, "VFD %d started successfully.", slave_addr);
