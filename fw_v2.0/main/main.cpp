@@ -13,10 +13,25 @@ extern "C" {
 }
 
 #include "vfd.hpp"
+#include "buzzer.hpp"
+#include "gate.hpp"
 
 
 static const char *TAG = "main";
+//create buzzer object on pin 12 with gap between queued events of 500ms 
+buzzer_t buzzer(CONFIG_BUZZER_GPIO, 100);
 
+//======================================
+//============ buzzer task =============
+//======================================
+//TODO: move the task creation to buzzer class (buzzer.cpp)
+//e.g. only have function buzzer.createTask() in app_main
+void task_buzzer( void * pvParameters ){
+    ESP_LOGI("task_buzzer", "Start of buzzer task...");
+        //run function that waits for a beep events to arrive in the queue
+        //and processes them
+        buzzer.processQueue();
+}
 
 // Configure all GPIO pins according to config.h
 void configure_gpio_pins() {
@@ -66,11 +81,24 @@ void configure_gpio_pins() {
 
 
 
+// Task function that repeatedly calls gate1.handle()
+void gateHandleTask(void *pvParameters)
+{
+    Gate* gate = (Gate*) pvParameters;
+    while (true) {
+        gate->handle();
+        vTaskDelay(pdMS_TO_TICKS(100));  // Call handle() every 100 ms.
+    }
+}
+
+
+
 
 
 
 //#define RUN_GPIO_TEST
-#define RUN_MODBUS_TEST
+//#define RUN_MODBUS_TEST
+#define RUN_GATE_TEST
 
 extern "C" void app_main(void)
 {
@@ -85,13 +113,91 @@ extern "C" void app_main(void)
     esp_log_level_set("Modbus-RTU", ESP_LOG_INFO);
     esp_log_level_set("IO-test", ESP_LOG_INFO);
     esp_log_level_set("VFD", ESP_LOG_INFO);
+    esp_log_level_set("Gate1", ESP_LOG_DEBUG);
+    esp_log_level_set("buzzer", ESP_LOG_ERROR);
+
+    //--- create task for buzzer ---
+    xTaskCreate(&task_buzzer, "task_buzzer", 2048, NULL, 5, NULL);
+
+    // beep at startup
+    buzzer.beep(3, 50, 100);
+
+    // Create VFD instances
+    VFD vfd1(0x01); // VFD 1 with address 0x01
+    VFD vfd2(0x02); // VFD 2 with address 0x02
+
+
+#ifdef RUN_GATE_TEST
+
+    // Create a Gate instance using the configured GPIOs.
+    // Parameters:
+    //   - Gate name: "Gate1"
+    //   - limitSwitchOpen: CONFIG_SW_G1_OPEN_GPIO (e.g., GPIO_NUM_5)
+    //   - limitSwitchClosed: CONFIG_SW_G1_CLOSED_GPIO (e.g., GPIO_NUM_18)
+    //   - relayPin: CONFIG_RELAY_VFD1_GPIO (e.g., GPIO_NUM_25)
+    //   - pointer to VFD instance: vfd1 (created earlier)
+    //   - pointer to Buzzer instance: buzzer (assumed global or instantiated)
+    //   - defaultFrequency: 50 Hz
+    //   - relay inactivity timeout: 30000 ms
+    //   - full run duration (0% to 100%): 5000 ms
+    //   - open movement timeout: 5000 ms
+    //   - close movement timeout: 5000 ms
+    Gate gate1("Gate1",
+               CONFIG_SW_G1_OPEN_GPIO,
+               CONFIG_SW_G1_CLOSED_GPIO,
+               CONFIG_RELAY_VFD1_GPIO,
+
+               &vfd1,
+               &buzzer,
+
+               50,
+               300000,
+               15000,
+               30000,
+               30000);
+
+    // Create a task that continuously calls gate1.handle()
+    xTaskCreate(gateHandleTask, "gateHandleTask", 2048, &gate1, 5, NULL);
+
+
+
+    ESP_LOGW("GateTest", "Starting Gate Test Sequence.");
+
+    // --- Test Sequence with simple delays ---
+    
+    // 1. Open the gate for 3000 ms.
+    ESP_LOGW("GateTest", "Command: Open for 3000 ms");
+    gate1.openForMs(3000);
+    vTaskDelay(pdMS_TO_TICKS(10000));  // Wait longer than 3000 ms to let the movement finish
+
+    // 2. Run the gate to fully open (100%).
+    ESP_LOGW("GateTest", "Command: Run to 100%% (Fully Open)");
+    gate1.runTo(100.0f);
+    vTaskDelay(pdMS_TO_TICKS(10000));  // Wait long enough for full open movement
+
+    // 3. Run the gate to fully close (0%).
+    ESP_LOGW("GateTest", "Command: Run to 0%% (Fully Closed)");
+    gate1.runTo(0.0f);
+    vTaskDelay(pdMS_TO_TICKS(10000));  // Wait long enough for full close movement
+
+    // 4. Open the gate for 5000 ms, but stop it manually after 2000 ms.
+    ESP_LOGW("GateTest", "Command: Open for 5000 ms, manual stop after 2000 ms");
+    gate1.openForMs(5000);
+    vTaskDelay(pdMS_TO_TICKS(2000));  // Wait 2 seconds
+    gate1.stop();                     // Issue a stop command
+    vTaskDelay(pdMS_TO_TICKS(3000));  // Allow time for the stop to take effect
+
+    ESP_LOGW("GateTest", "Gate Test Sequence Completed.");
+    
+    // Optionally, suspend or delete this task if no further testing is required.
+    vTaskDelay(pdMS_TO_TICKS(100000));
+    vTaskDelete(NULL);
+
+#endif
 
 
 #ifdef RUN_MODBUS_TEST
 
-// Create VFD instances
-    VFD vfd1(0x01); // VFD 1 with address 0x01
-    VFD vfd2(0x02); // VFD 2 with address 0x02
 
     while (1)
     {
