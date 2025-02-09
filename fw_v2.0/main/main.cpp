@@ -87,7 +87,7 @@ void gateHandleTask(void *pvParameters)
     Gate* gate = (Gate*) pvParameters;
     while (true) {
         gate->handle();
-        vTaskDelay(pdMS_TO_TICKS(100));  // Call handle() every 100 ms.
+        vTaskDelay(pdMS_TO_TICKS(500));  // Call handle() every 100 ms.
     }
 }
 
@@ -113,7 +113,7 @@ extern "C" void app_main(void)
     esp_log_level_set("Modbus-RTU", ESP_LOG_INFO);
     esp_log_level_set("IO-test", ESP_LOG_INFO);
     esp_log_level_set("VFD", ESP_LOG_INFO);
-    esp_log_level_set("Gate1", ESP_LOG_DEBUG);
+    esp_log_level_set("Gate1", ESP_LOG_VERBOSE);
     esp_log_level_set("buzzer", ESP_LOG_ERROR);
 
     //--- create task for buzzer ---
@@ -132,32 +132,25 @@ extern "C" void app_main(void)
     // Create a Gate instance using the configured GPIOs.
     // Parameters:
     //   - Gate name: "Gate1"
-    //   - limitSwitchOpen: CONFIG_SW_G1_OPEN_GPIO (e.g., GPIO_NUM_5)
-    //   - limitSwitchClosed: CONFIG_SW_G1_CLOSED_GPIO (e.g., GPIO_NUM_18)
-    //   - relayPin: CONFIG_RELAY_VFD1_GPIO (e.g., GPIO_NUM_25)
+    //   - kLimitSwitchOpenGpio: CONFIG_SW_G1_OPEN_GPIO (e.g., GPIO_NUM_5)
+    //   - kLimitSwitchClosedGpio: CONFIG_SW_G1_CLOSED_GPIO (e.g., GPIO_NUM_18)
+    //   - kRelayPinGpio: CONFIG_RELAY_VFD1_GPIO (e.g., GPIO_NUM_25)
     //   - pointer to VFD instance: vfd1 (created earlier)
     //   - pointer to Buzzer instance: buzzer (assumed global or instantiated)
-    //   - defaultFrequency: 50 Hz
-    //   - relay inactivity timeout: 30000 ms
     //   - full run duration (0% to 100%): 5000 ms
-    //   - open movement timeout: 5000 ms
-    //   - close movement timeout: 5000 ms
     Gate gate1("Gate1",
-               CONFIG_SW_G1_OPEN_GPIO,
-               CONFIG_SW_G1_CLOSED_GPIO,
+               CONFIG_SW_G1_OPEN_GPIO, 0, // active low (switch NO to GND -> optocoupler ON)
+               CONFIG_SW_G1_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
                CONFIG_RELAY_VFD1_GPIO,
 
                &vfd1,
                &buzzer,
 
-               50,
-               300000,
-               15000,
-               30000,
-               30000);
+               15000
+    );
 
     // Create a task that continuously calls gate1.handle()
-    xTaskCreate(gateHandleTask, "gateHandleTask", 2048, &gate1, 5, NULL);
+    xTaskCreate(gateHandleTask, "gateHandleTask", 2048*5, &gate1, 5, NULL);
 
 
 
@@ -184,6 +177,7 @@ extern "C" void app_main(void)
     ESP_LOGW("GateTest", "Command: Open for 5000 ms, manual stop after 2000 ms");
     gate1.openForMs(5000);
     vTaskDelay(pdMS_TO_TICKS(2000));  // Wait 2 seconds
+    ESP_LOGW("GateTest", "Command: stopping gate");
     gate1.stop();                     // Issue a stop command
     vTaskDelay(pdMS_TO_TICKS(3000));  // Allow time for the stop to take effect
 

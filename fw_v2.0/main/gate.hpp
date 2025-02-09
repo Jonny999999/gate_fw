@@ -15,6 +15,9 @@
 // Define a delay (in milliseconds) for the VFD startup after the relay is turned on.
 #define DELAY_VFD_STARTUP 500
 
+// Gate state strings for logging
+extern const char *GateState_str [6];
+
 // Gate state definitions.
 enum GateState {
     IDLE_FULLY_OPEN,
@@ -29,18 +32,17 @@ class Gate {
 public:
     // Constructor.
     Gate(const char *name,
-         gpio_num_t limitSwitchOpen,
-         gpio_num_t limitSwitchClosed,
-         gpio_num_t relayPin,
+         gpio_num_t kLimitSwitchOpenGpio,
+         bool kLimitSwitchOpen_ActiveLevel,
+         gpio_num_t kLimitSwitchClosedGpio,
+         bool kLimitSwitchClosed_ActiveLevel,
+         gpio_num_t kRelayPinGpio,
 
          VFD *vfd,
          buzzer_t *buzzer,
 
-         float defaultFrequency,
-         uint32_t relayTimeoutMs,
-         uint32_t runDurationMs,
-         uint32_t openTimeoutMs,
-         uint32_t closeTimeoutMs);
+         uint32_t runDurationMs
+    );
 
     // Public movement methods.
     // runTo() moves the gate to the target percentage.
@@ -58,19 +60,24 @@ public:
 
 
 private:
+    // ==== CONFIG ====
+    static constexpr float kDefaultVfdFrequency = 40.0f;  // Frequency (Hz) to use when running
+    static constexpr uint32_t kRelayInactivityTimeoutMs = 60e3;      // Inactivity timeout (for relay turn-off)
+    static constexpr uint32_t kMovingTimeout = 15e3;  // Max allowed time for continuous opening / closing movement without reaching limit
+
+
     const char* name;             // Gate name (used as the log tag)
-    const gpio_num_t limitSwitchOpen;   // GPIO for the open limit switch
-    const gpio_num_t limitSwitchClosed; // GPIO for the closed limit switch
-    const gpio_num_t relayPin;          // GPIO for the VFD supply relay
+    const gpio_num_t kLimitSwitchOpenGpio;   // GPIO for the open limit switch
+    const bool kLimitSwitchOpen_ActiveLevel; // Voltage level when switch is active (high/low)
+    const gpio_num_t kLimitSwitchClosedGpio; // GPIO for the closed limit switch
+    const bool kLimitSwitchClosed_ActiveLevel; // Voltage level when switch is active (high/low)
+    const gpio_num_t kRelayPinGpio;          // GPIO for the VFD supply relay
 
     VFD* const vfd;       // Pointer to the associated VFD object
     buzzer_t* const buzzer; // Pointer to the buzzer object
 
     const float defaultFrequency = 40;  // Frequency (Hz) to use when running
-    const uint32_t relayTimeoutMs;      // Inactivity timeout (for relay turn-off) in milliseconds
     const uint32_t runDurationMs;  // Full run duration (0% to 100%) in milliseconds
-    const uint32_t openTimeoutMs;  // Maximum allowed time for an opening movement (ms)
-    const uint32_t closeTimeoutMs; // Maximum allowed time for a closing movement (ms)
 
     uint64_t timestampStart; // Timestamp (in microseconds) when movement started
     uint64_t targetRunTime;  // Desired movement duration (in microseconds) for partial moves
