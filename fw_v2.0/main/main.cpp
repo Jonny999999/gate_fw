@@ -16,6 +16,8 @@ extern "C" {
 #include "buzzer.hpp"
 #include "gate.hpp"
 
+#include "control.hpp"
+
 
 static const char *TAG = "main";
 //create buzzer object on pin 12 with gap between queued events of 500ms 
@@ -98,7 +100,7 @@ void gateHandleTask(void *pvParameters)
 
 //#define RUN_GPIO_TEST
 //#define RUN_MODBUS_TEST
-#define RUN_GATE_TEST
+//#define RUN_GATE_TEST
 
 extern "C" void app_main(void)
 {
@@ -127,7 +129,6 @@ extern "C" void app_main(void)
     VFD vfd2(0x02); // VFD 2 with address 0x02
 
 
-#ifdef RUN_GATE_TEST
 
     // Create a Gate instance using the configured GPIOs.
     // Parameters:
@@ -138,7 +139,7 @@ extern "C" void app_main(void)
     //   - pointer to VFD instance: vfd1 (created earlier)
     //   - pointer to Buzzer instance: buzzer (assumed global or instantiated)
     //   - full run duration (0% to 100%): 5000 ms
-    Gate gate1("Gate1",
+    Gate gateEast("Gate 1 (East)",
                CONFIG_SW_G1_OPEN_GPIO, 0, // active low (switch NO to GND -> optocoupler ON)
                CONFIG_SW_G1_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
                CONFIG_RELAY_VFD1_GPIO,
@@ -149,6 +150,38 @@ extern "C" void app_main(void)
                15000
     );
 
+
+
+    Gate gateWest("Gate 2 (West)",
+               CONFIG_SW_G2_OPEN_GPIO, 0, // active low (switch NO to GND -> optocoupler ON)
+               CONFIG_SW_G2_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
+               CONFIG_RELAY_VFD2_GPIO,
+               &vfd2,
+               &buzzer,
+
+               15000
+    );
+
+
+
+ControlConfig config = {
+    .gateA = &gateWest,
+    .gateB = &gateEast,
+    .remoteOpenGpio = CONFIG_BTN_OPEN_GPIO,
+    .remoteCloseGpio = CONFIG_BTN_CLOSE_GPIO,
+    .buttonOpenGpio = CONFIG_REMOTE_OPEN_GPIO,
+    .buttonCloseGpio = CONFIG_REMOTE_CLOSE_GPIO,
+    .buzzer = &buzzer
+};
+
+#ifndef RUN_GATE_TEST
+    // Create Task handling user input and the gates
+    xTaskCreate(controlTask, "ControlTask", 4096, (void*)&config, 5, nullptr);
+#endif
+
+
+
+#ifdef RUN_GATE_TEST
     // Create a task that continuously calls gate1.handle()
     xTaskCreate(gateHandleTask, "gateHandleTask", 2048*5, &gate1, 5, NULL);
 
