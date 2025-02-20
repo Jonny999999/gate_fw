@@ -37,6 +37,7 @@ void task_buzzer( void * pvParameters ){
 
 // Configure all GPIO pins according to config.h
 void configure_gpio_pins() {
+    // TODO: most pins are initialized in the task they are used, thus can be dropped here -> move to iotest only?
     // configuration struct for gpio pins
     gpio_config_t io_conf;
 
@@ -112,11 +113,13 @@ extern "C" void app_main(void)
     modbus_init();
 
     // set loglevel
-    esp_log_level_set("Modbus-RTU", ESP_LOG_INFO);
+    esp_log_level_set("Modbus-RTU", ESP_LOG_NONE);
     esp_log_level_set("IO-test", ESP_LOG_INFO);
-    esp_log_level_set("VFD", ESP_LOG_INFO);
-    esp_log_level_set("Gate1", ESP_LOG_VERBOSE);
+    esp_log_level_set("VFD", ESP_LOG_NONE);
+    esp_log_level_set("Gate1_West", ESP_LOG_INFO);
+    esp_log_level_set("Gate2_East", ESP_LOG_ERROR);
     esp_log_level_set("buzzer", ESP_LOG_ERROR);
+    esp_log_level_set("control", ESP_LOG_INFO);
 
     //--- create task for buzzer ---
     xTaskCreate(&task_buzzer, "task_buzzer", 2048, NULL, 5, NULL);
@@ -139,44 +142,41 @@ extern "C" void app_main(void)
     //   - pointer to VFD instance: vfd1 (created earlier)
     //   - pointer to Buzzer instance: buzzer (assumed global or instantiated)
     //   - full run duration (0% to 100%): 5000 ms
-    Gate gateEast("Gate 1 (East)",
+    Gate gate1West("Gate1_West",
                CONFIG_SW_G1_OPEN_GPIO, 0, // active low (switch NO to GND -> optocoupler ON)
                CONFIG_SW_G1_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
                CONFIG_RELAY_VFD1_GPIO,
-
                &vfd1,
                &buzzer,
-
                15000
     );
 
 
 
-    Gate gateWest("Gate 2 (West)",
+    Gate gate2East("Gate2_East",
                CONFIG_SW_G2_OPEN_GPIO, 0, // active low (switch NO to GND -> optocoupler ON)
                CONFIG_SW_G2_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
                CONFIG_RELAY_VFD2_GPIO,
                &vfd2,
                &buzzer,
-
                15000
     );
 
 
 
-ControlConfig config = {
-    .gateA = &gateWest,
-    .gateB = &gateEast,
-    .remoteOpenGpio = CONFIG_BTN_OPEN_GPIO,
-    .remoteCloseGpio = CONFIG_BTN_CLOSE_GPIO,
-    .buttonOpenGpio = CONFIG_REMOTE_OPEN_GPIO,
-    .buttonCloseGpio = CONFIG_REMOTE_CLOSE_GPIO,
+ControlConfig controlConfig = {
+    .gateA = &gate1West,
+    .gateB = &gate2East,
+    .remoteOpenGpio = CONFIG_REMOTE_OPEN_GPIO,
+    .remoteCloseGpio = CONFIG_REMOTE_CLOSE_GPIO,
+    .buttonOpenGpio = CONFIG_BTN_OPEN_GPIO,
+    .buttonCloseGpio = CONFIG_BTN_CLOSE_GPIO,
     .buzzer = &buzzer
 };
 
 #ifndef RUN_GATE_TEST
     // Create Task handling user input and the gates
-    xTaskCreate(controlTask, "ControlTask", 4096, (void*)&config, 5, nullptr);
+    xTaskCreate(controlTask, "ControlTask", 4096*2, (void*)&controlConfig, 5, nullptr);
 #endif
 
 
@@ -271,5 +271,8 @@ ControlConfig config = {
 #endif
 
 
+// keep main task alive forever 
+// (prevent deconstruction of objects passed to tasks)
+while(1) vTaskDelay(portMAX_DELAY); 
 
 }

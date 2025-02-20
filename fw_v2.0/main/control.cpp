@@ -1,118 +1,186 @@
 #include "control.hpp"
 #include "esp_log.h"
+#include "gpio_evaluateSwitch.hpp"
 
+#define CONTROL_LOOP_HANDLE_DELAY_MS 50
+
+
+//===============================
+//========== Variables ==========
+//===============================
 // State definitions
-enum class ControlState { IDLE, WAIT_FOR_INPUT, MOVING_TO_TARGET };
-const char* controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET"};
-
-// Static instances for input evaluation
-static gpio_evaluatedSwitch buttonOpen(GPIO_NUM_MAX, false, false);
-static gpio_evaluatedSwitch buttonClose(GPIO_NUM_MAX, false, false);
-static gpio_evaluatedSwitch remoteOpen(GPIO_NUM_MAX, false, false);
-static gpio_evaluatedSwitch remoteClose(GPIO_NUM_MAX, false, false);
+enum class ControlState
+{
+    IDLE,
+    WAIT_FOR_INPUT,
+    MOVING_TO_TARGET
+};
+const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET"};
+// TODO: add and handle state e.g. LOCKED
 
 // Control state variables
 static ControlState ctlState = ControlState::IDLE;
 static uint32_t timestampLastAction;
 static uint8_t countPressed = 0;
-static const char* TAG_CTL = "control";
+static const char *TAG_CTL = "control";
 
-void controlTask(void* param) {
-    auto* config = static_cast<ControlConfig*>(param);
+
+
+
+
+//================================
+//========= Control Task =========
+//================================
+void controlTask(void *param)
+{
+    auto *config = static_cast<ControlConfig *>(param);
 
     // Initialize buttons with GPIOs from config
-    buttonOpen = gpio_evaluatedSwitch(config->buttonOpenGpio, false, false);
-    buttonClose = gpio_evaluatedSwitch(config->buttonCloseGpio, false, false);
-    remoteOpen = gpio_evaluatedSwitch(config->remoteOpenGpio, false, false);
-    remoteClose = gpio_evaluatedSwitch(config->remoteCloseGpio, false, false);
-
+    ESP_LOGI(TAG_CTL, "Initializing evaluated switch instances for buttons...");
+    gpio_evaluatedSwitch buttonOpen(config->buttonOpenGpio, false, false);
+    gpio_evaluatedSwitch buttonClose(config->buttonCloseGpio, false, false);
+    gpio_evaluatedSwitch remoteOpen(config->remoteOpenGpio, false, false);
+    gpio_evaluatedSwitch remoteClose(config->remoteCloseGpio, false, false);
     ESP_LOGI(TAG_CTL, "Control task started");
 
-    while (true) {
+    // control loop
+    while (true)
+    {
         // Handle button inputs
         buttonOpen.handle();
         buttonClose.handle();
         remoteOpen.handle();
         remoteClose.handle();
 
-        switch (ctlState) {
-            case ControlState::IDLE:
-                if (buttonClose.risingEdge) {
-                    ESP_LOGW(TAG_CTL, "Closing completely");
-                    config->buzzer->beep(1, 1000, 0);
-                    config->gateA->close(20000);
-                    config->gateB->close(20000);
-                    ctlState = ControlState::MOVING_TO_TARGET;
+        // State machine - control with button input according to current state
+        switch (ctlState)
+        {
+            //--------------------
+            //------- IDLE -------
+            //--------------------
+            // wait for initial user input
+        case ControlState::IDLE:
+            //--- button close ---
+            // close gates completely
+            if (buttonClose.risingEdge)
+            {
+                ESP_LOGW(TAG_CTL, "Closing completely");
+                config->buzzer->beep(1, 1000, 0);
+                config->gateA->closeCompletely();
+                config->gateB->closeCompletely();
+                ctlState = ControlState::MOVING_TO_TARGET;
+            }
+            //--- button open ---
+            // start opening, wait for further input
+            else if (buttonOpen.risingEdge)
+            {
+                ESP_LOGW(TAG_CTL, "Opening (waiting for further input)");
+                config->buzzer->beep(1, 100, 0);
+                config->gateA->openCompletely();
+                config->gateB->openCompletely();
+                countPressed = 0;
+                timestampLastAction = esp_log_timestamp();
+                ctlState = ControlState::WAIT_FOR_INPUT;
+            }
+            //--- remote close ---
+            // close gates completely
+            else if (remoteClose.risingEdge)
+            {
+                ESP_LOGW(TAG_CTL, "REMOTE: Closing completely");
+                config->buzzer->beep(2, 500, 100);
+                config->gateA->closeCompletely();
+                config->gateB->closeCompletely();
+                ctlState = ControlState::MOVING_TO_TARGET;
+            }
+            //--- remote open ---
+            // open gates completely
+            else if (remoteOpen.risingEdge)
+            {
+                ESP_LOGW(TAG_CTL, "REMOTE: Opening completely");
+                config->buzzer->beep(1, 1000, 0);
+                config->gateA->openCompletely();
+                config->gateB->openCompletely();
+                ctlState = ControlState::MOVING_TO_TARGET;
+            }
+            break;
 
-                } else if (buttonOpen.risingEdge) {
-                    ESP_LOGW(TAG_CTL, "Opening (waiting for further input)");
-                    config->buzzer->beep(1, 100, 0);
-                    config->gateA->open(20000);
-                    config->gateB->open(20000);
-                    countPressed = 0;
-                    timestampLastAction = esp_log_timestamp();
-                    ctlState = ControlState::WAIT_FOR_INPUT;
+            //--------------------------
+            //----- WAIT_FOR_INPUT -----
+            //--------------------------
+            // wait for and process additional input
+            //(decide what the user wants exactly while the gate already moves)
+        case ControlState::WAIT_FOR_INPUT:
+            //--- stop ---
+            if (buttonClose.state)
+            { // close button is pressed while waiting for input
+                ESP_LOGW(TAG_CTL, "Close button while waiting for input -> stopping gates");
+                config->gateA->stop();
+                config->gateB->stop();
+                config->buzzer->beep(1, 400, 0);
+                ctlState = ControlState::IDLE;
+            }
+            //--- open completely ---
+            else if (buttonOpen.state && buttonOpen.msPressed > 800)
+            { // open button is pressed longer than 800ms
+                ESP_LOGW(TAG_CTL, "long press -> Opening completely");
+                config->buzzer->beep(1, 1000, 0);
+                ctlState = ControlState::MOVING_TO_TARGET;
+            }
+            //--- increment open duration ---
+            else if (buttonOpen.risingEdge)
+            { // open button high again
+                ESP_LOGI(TAG_CTL, "Additional press -> Incrementing open duration - total: %d", countPressed);
+                config->buzzer->beep(1, 60, 0);
+                countPressed++;
+                timestampLastAction = esp_log_timestamp();
+            }
+            //--- timeout ---
+            #define BUTTON_PRESS_OPEN_INCREMENT_MS 2000 //400
+            #define BUTTON_PRESS_OPEN_TIME_MS 1100 // 1100
+            else if (esp_log_timestamp() - timestampLastAction > 900)
+            { // no input for more than 1200ms
+                ESP_LOGW(TAG_CTL, "Timeout - applying target duration");
+                config->gateA->updateTargetRunTime(BUTTON_PRESS_OPEN_TIME_MS + (BUTTON_PRESS_OPEN_INCREMENT_MS * countPressed));
+                config->gateB->updateTargetRunTime(BUTTON_PRESS_OPEN_TIME_MS + (BUTTON_PRESS_OPEN_INCREMENT_MS * countPressed));
 
-                } else if (remoteClose.risingEdge) {
-                    ESP_LOGW(TAG_CTL, "REMOTE: Closing completely");
-                    config->buzzer->beep(2, 500, 100);
-                    config->gateA->close(20000);
-                    config->gateB->close(20000);
-                    ctlState = ControlState::MOVING_TO_TARGET;
-
-                } else if (remoteOpen.risingEdge) {
-                    ESP_LOGW(TAG_CTL, "REMOTE: Opening completely");
-                    config->buzzer->beep(1, 1000, 0);
-                    config->gateA->open(20000);
-                    config->gateB->open(20000);
-                    ctlState = ControlState::MOVING_TO_TARGET;
+                if (countPressed > 1)
+                {
+                    config->buzzer->beep(2, 40, 20);
                 }
-                break;
 
-            case ControlState::WAIT_FOR_INPUT:
-                if (buttonClose.state) {
-                    config->gateA->stop();
-                    config->gateB->stop();
-                    config->buzzer->beep(1, 400, 0);
-                    ctlState = ControlState::IDLE;
+                ctlState = ControlState::MOVING_TO_TARGET;
+            }
+            break;
 
-                } else if (buttonOpen.state && buttonOpen.msPressed > 800) {
-                    ESP_LOGW(TAG_CTL, "Opening completely");
-                    config->buzzer->beep(1, 1000, 0);
-                    ctlState = ControlState::MOVING_TO_TARGET;
+            //------------------------------
+            //------ MOVING_TO_TARGET ------
+            //------------------------------
+            // while gate moves to target, stop with buttons
+            // or reset to idle when gates have stopped
+        case ControlState::MOVING_TO_TARGET:
+            //--- idle when gates stopped at target or timeout ---
+            if (config->gateA->getIsIdling() && config->gateB->getIsIdling())
+            { // both do not move and are ready to receive new commands
+                ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
+                ctlState = ControlState::IDLE;
+            }
+            //--- stop with any user input ---
+            else if (buttonClose.risingEdge || buttonOpen.risingEdge || remoteOpen.risingEdge || remoteClose.risingEdge) // any remote input or button is pressed while moving to target
+            {
+                ESP_LOGW(TAG_CTL, "User event received while moving => stopping movement");
+                config->gateA->stop();
+                config->gateB->stop();
+                config->buzzer->beep(1, 400, 0);
+                // note: controlState gets switched in above case when WAIT_LOCK is actually over (both gates IDLE)
+            }
+            break;
+        } // end switch
 
-                } else if (buttonOpen.risingEdge) {
-                    ESP_LOGI(TAG_CTL, "Incrementing open duration - total: %d", countPressed);
-                    config->buzzer->beep(1, 60, 0);
-                    countPressed++;
-                    timestampLastAction = esp_log_timestamp();
 
-                } else if (esp_log_timestamp() - timestampLastAction > 900) {
-                    ESP_LOGW(TAG_CTL, "Timeout - applying target duration");
-                    config->gateA->setDuration(1100 + (400 * countPressed));
-                    config->gateB->setDuration(1100 + (400 * countPressed));
+        // handle gates (update pos, handle limits, turn on/off...)
+        config->gateA->handle();
+        config->gateB->handle();
 
-                    if (countPressed > 1) {
-                        config->buzzer->beep(2, 40, 20);
-                    }
-
-                    ctlState = ControlState::MOVING_TO_TARGET;
-                }
-                break;
-
-            case ControlState::MOVING_TO_TARGET:
-                if (config->gateA->state == gateState::IDLE && config->gateB->state == gateState::IDLE) {
-                    ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
-                    ctlState = ControlState::IDLE;
-
-                } else if (buttonClose.risingEdge || buttonOpen.risingEdge || remoteOpen.risingEdge || remoteClose.risingEdge) {
-                    config->gateA->stop();
-                    config->gateB->stop();
-                    config->buzzer->beep(1, 400, 0);
-                }
-                break;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(50)); // Small delay to avoid busy loop
-    }
+        vTaskDelay(pdMS_TO_TICKS(CONTROL_LOOP_HANDLE_DELAY_MS)); // Small delay to avoid busy loop
+    } // end control loop
 }
