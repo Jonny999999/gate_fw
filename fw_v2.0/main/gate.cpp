@@ -8,6 +8,7 @@ const char *GateState_str [] = {
     "IDLE_FULLY_OPEN", 
     "IDLE_FULLY_CLOSED",
     "IDLE_PARTIALLY_OPEN",
+    "WAITING_FOR_VFD_STARTUP",
     "MOVING_OPENING",
     "MOVING_CLOSING",
     "ERROR_STATE"
@@ -49,19 +50,22 @@ void Gate::startRelay() {
     if (!relayOn) {
         ESP_LOGI(name, "Turning relay on...");
         gpio_set_level(kRelayPinGpio, 1);
+        timestampRelayTurnedOnUs = esp_timer_get_time();
         relayOn = true;
-        ESP_LOGI(name, "Waiting %d ms for VFD to boot up...", DELAY_VFD_STARTUP);
+        //ESP_LOGI(name, "Waiting %d ms for VFD to boot up...", DELAY_VFD_STARTUP);
+        //state = WAITING_FOR_VFD_STARTUP;
         // Delay to allow the VFD to boot up.
-        vTaskDelay(pdMS_TO_TICKS(DELAY_VFD_STARTUP));
+        //vTaskDelay(pdMS_TO_TICKS(DELAY_VFD_STARTUP));
+        // note: optimized to not blocking delay, waiting in state WAITING_FOR_VFD_STARTUP
     }
-    lastActivityTimestamp = esp_timer_get_time();
+    lastActivityTimestampUs = esp_timer_get_time();
     relayTimeoutActive = false;
 }
 
 
 void Gate::softStopRelay() {
     relayTimeoutActive = true;
-    lastActivityTimestamp = esp_timer_get_time();
+    lastActivityTimestampUs = esp_timer_get_time();
     ESP_LOGI(name, "Relay soft stop initiated.");
 }
 
@@ -76,15 +80,15 @@ void Gate::forceStopRelay() {
 
 
 void Gate::updatePosition() {
-    uint64_t currentTime = esp_timer_get_time();
-    uint64_t elapsed = currentTime - lastPositionUpdateTimestamp;
+    uint64_t currentTimeUs = esp_timer_get_time();
+    uint64_t elapsed = currentTimeUs - lastPositionUpdateTimestampUs;
     float deltaPercent = (elapsed / (float)(runDurationMs * 1000)) * 100.0f;
     if (state == MOVING_OPENING) {
         positionPercent = std::min(100.0f, positionPercent + deltaPercent);
     } else if (state == MOVING_CLOSING) {
         positionPercent = std::max(0.0f, positionPercent - deltaPercent);
     }
-    lastPositionUpdateTimestamp = currentTime;
+    lastPositionUpdateTimestampUs = currentTimeUs;
     ESP_LOGD(name, "Position updated: %.2f%% - timeElapsed=%lld -> deltaPercent=%f", positionPercent, elapsed, deltaPercent);
 }
 
@@ -115,8 +119,16 @@ bool Gate::checkLimitSwitchClosedActive() {
 // Private helper to start movement in a given direction.
 void Gate::startMovement(bool opening) {
     ESP_LOGI(name, "Starting movement dir=%s...", opening ? "OPENING" : "CLOSING");
-    startRelay();
-    lastPositionUpdateTimestamp = timestampStart;
+    // when relay is off we need to wait for vfd startup first...
+    if (!relayOn || ((esp_timer_get_time() - timestampRelayTurnedOnUs) < DELAY_VFD_STARTUP)) {
+        startRelay();
+        nextDirection = opening;
+        ESP_LOGI(name, "Waiting %d ms for VFD to boot up in state WAITING_FOR_VFD_STARTUP first...", DELAY_VFD_STARTUP);
+        state = WAITING_FOR_VFD_STARTUP;
+        return;
+    }
+
+    lastPositionUpdateTimestampUs = timestampStartUs;
     vfd->setFrequency(kDefaultVfdFrequency);
     esp_err_t err = vfd->start(opening); // start motor in desired direction
     #ifndef IGNORE_VFD_ERROR
@@ -127,7 +139,7 @@ void Gate::startMovement(bool opening) {
         return;
     }
     #endif
-    timestampStart = esp_timer_get_time();
+    timestampStartUs = esp_timer_get_time();
 
     if (opening) {
         state = MOVING_OPENING;
@@ -146,20 +158,20 @@ void Gate::runTo(float target) {
     // If target is 0 or 100, force full movement by using the full timeout.
     if (target <= 0.0f) {
         target = 0.0f;
-        targetRunTime = kMovingTimeout * 1000;
+        targetRunTimeMs = kMovingTimeout;
     } else if (target >= 100.0f) {
         target = 100.0f;
-        targetRunTime = kMovingTimeout * 1000;
+        targetRunTimeMs = kMovingTimeout ;
     } else {
         float delta = std::abs(target - positionPercent);
-        targetRunTime = (uint64_t)((delta / 100.0f) * runDurationMs * 1000);
+        targetRunTimeMs = (uint64_t)((delta / 100.0f) * runDurationMs );
     }
     if (target > positionPercent) {
         startMovement(true);
-        ESP_LOGI(name, "Running to %.2f%% (opening). Target run time: %llu us.", target, targetRunTime);
+        ESP_LOGI(name, "Running to %.2f%% (opening). Target run time: %llu ms.", target, targetRunTimeMs);
     } else if (target < positionPercent) {
         startMovement(false);
-        ESP_LOGI(name, "Running to %.2f%% (closing). Target run time: %llu us.", target, targetRunTime);
+        ESP_LOGI(name, "Running to %.2f%% (closing). Target run time: %llu ms.", target, targetRunTimeMs);
     } else {
         ESP_LOGW(name, "Already at target position (%.2f%%).", target);
     }
@@ -169,15 +181,26 @@ void Gate::runTo(float target) {
 
 // Public method: open for a specified duration.
 void Gate::openForMs(uint32_t ms) {
-    ESP_LOGI(name, "Received command: Opening for %ld ms.", ms);
+    ESP_LOGI(name, "Received command: Open for %ld ms.", ms);
     if(checkLimitSwitchOpenActive()){
         ESP_LOGE(name, "Received open command, but Limit-switch-open (pos=%.1f%%) - can not open further...", positionPercent);
         return;
     }
-    targetRunTime = ms * 1000;
+    targetRunTimeMs = ms;
     startMovement(true);
 }
 
+
+// Public method: open completely.
+void Gate::openCompletely() {
+    ESP_LOGI(name, "Received command: Open completely");
+    if(checkLimitSwitchOpenActive()){
+        ESP_LOGE(name, "Received open command, but Limit-switch-open (pos=%.1f%%) - can not open further...", positionPercent);
+        return;
+    }
+    targetRunTimeMs = runDurationMs + 5000; // ensure gate gets fully opened with running for longer than necessary (stops at limit switch)
+    startMovement(true);
+}
 
 
 // Public method: close for a specified duration.
@@ -187,13 +210,33 @@ void Gate::closeForMs(uint32_t ms) {
         ESP_LOGE(name, "Received close command, but Limit-switch-closed active and at %.1f%% - can not close further...", positionPercent);
         return;
     }
-    targetRunTime = ms * 1000;
+    targetRunTimeMs = ms ;
     startMovement(false);
 }
 
 
 
-void Gate::stop() {
+// Public method: close completely.
+void Gate::closeCompletely() {
+    ESP_LOGI(name, "Received command: Close completely");
+    if(checkLimitSwitchClosedActive()){
+        ESP_LOGE(name, "Received close command, but Limit-switch-closed active and at %.1f%% - can not close further...", positionPercent);
+        return;
+    }
+    targetRunTimeMs = runDurationMs + 5000; // ensure gate gets fully closed with running for longer than necessary (stops at limit switch)
+    startMovement(false);
+}
+
+
+// Public method: update target run time e.g. while already opening
+void Gate::updateTargetRunTime(uint32_t ms) {
+    ESP_LOGI(name, "Received command: To update target run duration to %ld", ms);
+    // TODO some checks required? only update when running? limit to range?
+    targetRunTimeMs = ms;
+}
+
+
+void Gate::stop(bool forceStatePartialOpen){ // default true
     ESP_LOGI(name, "stopping gate, turning off motor (current state=%s)", GateState_str[(int)state]);
     esp_err_t err = vfd->stop();
     #ifndef IGNORE_VFD_ERROR
@@ -207,6 +250,11 @@ void Gate::stop() {
     #endif
     buzzer->beep(1, 100, 200);
     softStopRelay();
+
+    // by default set state to partially open, when stopped due to limit switch the state is set manually
+    if (forceStatePartialOpen)
+        state = IDLE_PARTIALLY_OPEN;
+
     // Do not change state here; let the state machine (handle()) update it.
 }
 
@@ -216,10 +264,10 @@ void Gate::handle() {
     // debug logging
     ESP_LOGV(name, "handle() - state=%s,  pos=%.2f, limitOpen=%d, limitClosed=%d", GateState_str[(int)state], positionPercent, checkLimitSwitchOpenActive(), checkLimitSwitchClosedActive());
 
-    uint64_t currentTime = esp_timer_get_time();
+    uint64_t currentTimeUs = esp_timer_get_time();
 
     // Check for relay inactivity in idle states. TODO: verify in idle states?
-    if (relayTimeoutActive && (currentTime - lastActivityTimestamp > kRelayInactivityTimeoutMs * 1000))
+    if (relayTimeoutActive && (currentTimeUs - lastActivityTimestampUs > kRelayInactivityTimeoutMs * 1000))
     {
         ESP_LOGW(name, "Relay inactivity timeout of %lds reached. Forcing relay OFF...", kRelayInactivityTimeoutMs / 1000);
         forceStopRelay();
@@ -232,10 +280,10 @@ void Gate::handle() {
     {
         updatePosition();
         // timeout
-        if ((currentTime - timestampStart) >= (kMovingTimeout * 1000))
+        if ((currentTimeUs - timestampStartUs) >= (kMovingTimeout * 1000))
         {
             ESP_LOGE(name, "Open movement timeout exceeded.");
-            stop();
+            stop(false);
             state = ERROR_STATE;
             break;
         }
@@ -244,15 +292,15 @@ void Gate::handle() {
         {
             ESP_LOGI(name, "Open limit switch triggered.");
             positionPercent = 100.0f; // Calibrate position.
-            stop();
+            stop(false);
             state = IDLE_FULLY_OPEN;
             break;
         }
         // target reached
-        else if ((currentTime - timestampStart) >= targetRunTime)
+        else if ((currentTimeUs - timestampStartUs) >= targetRunTimeMs * 1000)
         {
             ESP_LOGI(name, "Target run time reached (while opening).");
-            stop();
+            stop(false);
             state = IDLE_PARTIALLY_OPEN;
         }
         break;
@@ -261,10 +309,10 @@ void Gate::handle() {
     {
         updatePosition();
         // timeout
-        if ((currentTime - timestampStart) >= (kMovingTimeout * 1000))
+        if ((currentTimeUs - timestampStartUs) >= (kMovingTimeout * 1000))
         {
             ESP_LOGE(name, "Close movement timeout exceeded.");
-            stop();
+            stop(false);
             state = ERROR_STATE;
             break;
         }
@@ -273,15 +321,15 @@ void Gate::handle() {
         {
             ESP_LOGI(name, "Close limit switch triggered.");
             positionPercent = 0.0f; // Calibrate position.
-            stop();
+            stop(false);
             state = IDLE_FULLY_CLOSED;
             break;
         }
         // target reached
-        else if ((currentTime - timestampStart) >= targetRunTime)
+        else if ((currentTimeUs - timestampStartUs) >= targetRunTimeMs * 1000)
         {
             ESP_LOGI(name, "Target run time reached (while closing).");
-            stop();
+            stop(false);
             state = IDLE_PARTIALLY_OPEN;
         }
         break;
@@ -319,8 +367,16 @@ void Gate::handle() {
             ESP_LOGW(name, "Gate reached fully closed position while off -> switching to IDLE_FULLY_CLOSED");
         }
         break;
+    case WAITING_FOR_VFD_STARTUP:
+        if (currentTimeUs - timestampRelayTurnedOnUs > DELAY_VFD_STARTUP * 1000){
+            ESP_LOGI(name, "VFD startup delay passed, starting motor");
+            startMovement(nextDirection);
+        }
+
+        break;
     case ERROR_STATE:
-        ESP_LOGE(name, "currently in ERROR state, TODO how to use / recover from here?");
+        ESP_LOGE(name, "currently in ERROR state, TODO how to use / recover from here? ==> switching to IDLE_PARTIALLY_OPEN for now...");
+        state = IDLE_PARTIALLY_OPEN;
         // Nothing further to do.
         break;
     }

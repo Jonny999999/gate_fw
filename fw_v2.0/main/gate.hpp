@@ -13,16 +13,18 @@
 #include "buzzer.hpp"
 
 // Define a delay (in milliseconds) for the VFD startup after the relay is turned on.
-#define DELAY_VFD_STARTUP 500
+#define DELAY_VFD_STARTUP 1500
+#define RELAY_INACTIVITY_TIMEOUT_MS 300e3
 
 // Gate state strings for logging
-extern const char *GateState_str [6];
+extern const char *GateState_str [7];
 
 // Gate state definitions.
 enum GateState {
-    IDLE_FULLY_OPEN,
+    IDLE_FULLY_OPEN = 0,
     IDLE_FULLY_CLOSED,
     IDLE_PARTIALLY_OPEN,
+    WAITING_FOR_VFD_STARTUP,
     MOVING_OPENING,
     MOVING_CLOSING,
     ERROR_STATE
@@ -49,20 +51,24 @@ public:
     // If target is 0 or 100, a full movement is forced by using the full timeout.
     void runTo(float targetPercent);
     void openForMs(uint32_t ms);
+    void openCompletely();
     void closeForMs(uint32_t ms);
-    void stop();
+    void closeCompletely();
+    void updateTargetRunTime(uint32_t ms);
+    void stop(bool forceStatePartialOpen = true);
 
     // The state machine to be called periodically.
     void handle();
 
     // Retrieve the current state.
     GateState getState() const;
+    bool getIsIdling() const {return state == IDLE_FULLY_OPEN || state == IDLE_FULLY_CLOSED || state == IDLE_PARTIALLY_OPEN;};
 
 
 private:
     // ==== CONFIG ====
     static constexpr float kDefaultVfdFrequency = 40.0f;  // Frequency (Hz) to use when running
-    static constexpr uint32_t kRelayInactivityTimeoutMs = 60e3;      // Inactivity timeout (for relay turn-off)
+    static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
     static constexpr uint32_t kMovingTimeout = 15e3;  // Max allowed time for continuous opening / closing movement without reaching limit
 
 
@@ -79,16 +85,18 @@ private:
     const float defaultFrequency = 40;  // Frequency (Hz) to use when running
     const uint32_t runDurationMs;  // Full run duration (0% to 100%) in milliseconds
 
-    uint64_t timestampStart; // Timestamp (in microseconds) when movement started
-    uint64_t targetRunTime;  // Desired movement duration (in microseconds) for partial moves
+    uint64_t timestampStartUs; // Timestamp (in microseconds) when movement started
+    uint64_t targetRunTimeMs;  // Desired movement duration (in microseconds) for partial moves
 
     GateState state;               // Current state of the gate
-    uint64_t lastActivityTimestamp; // For relay timeout control
+    bool nextDirection;             // Store desired gate direction while waiting for vfd startup
+    uint64_t lastActivityTimestampUs; // For relay timeout control
     bool relayTimeoutActive;       // Flag indicating a soft-stop request for the relay
     bool relayOn;                  // Whether the relay is currently on
+    uint64_t timestampRelayTurnedOnUs;
 
     float positionPercent;         // Current estimated position (0% = closed, 100% = open)
-    uint64_t lastPositionUpdateTimestamp; // Timestamp of last position update
+    uint64_t lastPositionUpdateTimestampUs; // Timestamp of last position update
 
     // Variables to track previous state of limit switches (for logging changes)
     bool prevOpenSwitchState;
