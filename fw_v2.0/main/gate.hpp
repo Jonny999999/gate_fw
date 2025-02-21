@@ -67,7 +67,7 @@ public:
 
 private:
     // ==== CONFIG ====
-    static constexpr float kDefaultVfdFrequency = 40.0f;  // Frequency (Hz) to use when running
+    static constexpr float kDefaultVfdFrequency = 20.0f;  // Frequency (Hz) to use when running
     static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
     static constexpr uint32_t kMovingTimeout = 15e3;  // Max allowed time for continuous opening / closing movement without reaching limit
 

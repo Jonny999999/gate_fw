@@ -117,7 +117,7 @@ extern "C" void app_main(void)
     esp_log_level_set("IO-test", ESP_LOG_INFO);
     esp_log_level_set("VFD", ESP_LOG_WARN);
     esp_log_level_set("Gate1_West", ESP_LOG_INFO);
-    esp_log_level_set("Gate2_East", ESP_LOG_ERROR);
+    esp_log_level_set("Gate2_East", ESP_LOG_INFO);
     esp_log_level_set("buzzer", ESP_LOG_ERROR);
     esp_log_level_set("control", ESP_LOG_INFO);
 
