@@ -15,6 +15,12 @@ static const char *TAG = "Modbus-RTU";
 #define INVERT_TX_SIGNAL 0
 #define INVERT_DIR_SIGNAL 0 //RTS
 
+
+// workaround to prevent errors when doing multiple write actions at low baud rate
+#define EXTRA_DELAY_BEFORE_WRITE_MS (BAUD_RATE < 9600 ? 10 : 0) // add 10 ms delay at low baudrate
+// note: when a second write follows immediately it will fail without having a small delay...
+//       with higher baudrate it works fine though
+
 void modbus_init(){
     uart_config_t uart_config = {
         .baud_rate = BAUD_RATE,
@@ -62,12 +68,17 @@ uint16_t modbus_crc16(const uint8_t *data, uint8_t length)
 
 
 
+
 // Function to send a Modbus RTU frame
 // returns 0: success, -1: uart sending failed, -2: incorrect response from vfd
 esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_t reg_addr, uint16_t value)
 {
     int len;
     ESP_LOGD(TAG, "send_modbus_command: addr %d, func: %d, regAddr: %d, value: %d", slave_addr, function_code, reg_addr, value);
+
+    // Fix issue with errors when writing too fast by adding delay between writes:
+    //TODO: Instead add timestamp to not block unnecessary when last request was long ago anyways?
+    vTaskDelay(pdMS_TO_TICKS(EXTRA_DELAY_BEFORE_WRITE_MS));
 
     // create frame
     uint8_t frame[8];
@@ -137,6 +148,10 @@ esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_
 esp_err_t read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *value) {
     int len;
     ESP_LOGD(TAG, "read_modbus_register: addr %d, regAddr: %d", slave_addr, reg_addr);
+
+    // Fix issue with errors when writing too fast by adding delay between writes:
+    //TODO: Instead add timestamp to not block unnecessary when last request was long ago anyways?
+    vTaskDelay(pdMS_TO_TICKS(EXTRA_DELAY_BEFORE_WRITE_MS));
 
     //create frame for read command
     uint8_t request[8];
