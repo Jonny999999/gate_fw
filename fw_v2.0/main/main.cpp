@@ -100,7 +100,7 @@ void gateHandleTask(void *pvParameters)
 
 
 //#define RUN_GPIO_TEST
-//#define RUN_MODBUS_TEST
+#define RUN_MODBUS_TEST
 //#define RUN_GATE_TEST
 
 extern "C" void app_main(void)
@@ -175,8 +175,10 @@ ControlConfig controlConfig = {
 };
 
 #ifndef RUN_GATE_TEST
+#ifndef RUN_MODBUS_TEST
     // Create Task handling user input and the gates
     xTaskCreate(controlTask, "ControlTask", 4096*2, (void*)&controlConfig, 5, nullptr);
+#endif
 #endif
 
 
@@ -225,6 +227,11 @@ ControlConfig controlConfig = {
 
 #ifdef RUN_MODBUS_TEST
 
+    gpio_set_level(CONFIG_RELAY_VFD1_GPIO, 1);
+    gpio_set_level(CONFIG_RELAY_VFD2_GPIO, 1);
+    ESP_LOGW(TAG, "Modbus test: turned on relay, waitin 2s for vfd startup...");
+    vTaskDelay(pdMS_TO_TICKS(2000));
+        vfd1.setFrequency(20); // Set frequency to 200 Hz
 
     while (1)
     {
@@ -232,16 +239,28 @@ ControlConfig controlConfig = {
         float voltage, current;
 
         // Control VFD 1
-        vfd1.setFrequency(20); // Set frequency to 200 Hz
-        vfd1.start();
+        //ESP_LOGW(TAG, "test FORWARD operation...");
+        //vfd1.setFrequency(20); // Set frequency to 200 Hz
+        //vfd1.start(true);
+        //vTaskDelay(pdMS_TO_TICKS(2000));
+        //vfd1.getVoltage(&voltage);
+        //vfd1.getCurrent(&current);
+        //vfd1.getTemperature(&temperature);
+        //ESP_LOGI("Main", "VFD1 -> Voltage: %.1f V, Current: %.1f A, Temperature: %d C", voltage, current, temperature);
+        //vfd1.stop();
+        //ESP_LOGW(TAG, "turning off for 2s");
+        //vTaskDelay(pdMS_TO_TICKS(2000));
+
+        ESP_LOGW(TAG, "test REVERSE operation...");
+        vfd1.start(false);
         vTaskDelay(pdMS_TO_TICKS(2000));
         vfd1.getVoltage(&voltage);
         vfd1.getCurrent(&current);
         vfd1.getTemperature(&temperature);
         ESP_LOGI("Main", "VFD1 -> Voltage: %.1f V, Current: %.1f A, Temperature: %d C", voltage, current, temperature);
         vfd1.stop();
-        vTaskDelay(pdMS_TO_TICKS(500));
-
+        ESP_LOGW(TAG, "turning off for 2s");
+        vTaskDelay(pdMS_TO_TICKS(2000));
 
         //// Control VFD 2
         //vfd2.setFrequency(10); // Set frequency to 150 Hz
@@ -253,7 +272,6 @@ ControlConfig controlConfig = {
         //ESP_LOGI("Main", "VFD2 -> Voltage: %d, Current: %d, Temperature: %d", voltage, current, temperature);
         //vfd2.stop();
 
-        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 
 #endif
