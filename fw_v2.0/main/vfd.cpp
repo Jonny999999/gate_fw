@@ -7,12 +7,12 @@ extern "C" {
 }
 
 
-// Define register addresses
-#define VFD_REG_START_STOP  0x0003 // Start/Stop command register
-#define VFD_REG_FREQUENCY   0x0002 // Frequency command register
-#define VFD_REG_VOLTAGE     0x0008 // Bus voltage register
-#define VFD_REG_CURRENT     0x0009 // Bus current register
-#define VFD_REG_TEMPERATURE 0x000A // Temperature register
+// Define register addresses (see screenshot manual: doc/vfd/T13-400W-12-HT13-750W-12H_modbus.jpg)
+#define VFD_REG_START_STOP  0x0003 // Start/Stop command register (R/W: 1 = start-fwd, 5 = start-rev, 2 = stop)
+#define VFD_REG_FREQUENCY   0x0002 // Frequency command register (R/W: 500=50Hz)
+#define VFD_REG_VOLTAGE     0x0008 // Bus voltage register (R: 3100 = 310V)
+#define VFD_REG_CURRENT     0x0009 // Bus current register (R: 132 = 1.32A)
+#define VFD_REG_TEMPERATURE 0x000A // Temperature register (R: 43 = 43C)
 
 
 
@@ -38,7 +38,7 @@ VFD::VFD(uint8_t slave_addr) : slave_addr(slave_addr), frequency(0), is_running(
 
 
 esp_err_t VFD::start(bool directionFwd) {
-    uint16_t reg_value = directionFwd ? 0x0001 : 0x0003; // 1=forward,  3=reverse,  2=stop
+    uint16_t reg_value = directionFwd ? 0x0001 : 0x0005; // 1=forward,  5=reverse,  2=stop  - Note: Manual states 3 for reverse but it is actually 5
     esp_err_t status = send_modbus_command(slave_addr, 0x06, VFD_REG_START_STOP, reg_value);
     if (status == ESP_OK) {
         is_running = true;
