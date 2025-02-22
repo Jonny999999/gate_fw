@@ -41,3 +41,7 @@ pcb_*/export/
 #freecad
 *.FCBak
 *.stl%    
+
+
+# libreoffice
+*.ods#
