@@ -13,7 +13,8 @@
 #include "buzzer.hpp"
 
 // Define a delay (in milliseconds) for the VFD startup after the relay is turned on.
-#define DELAY_VFD_STARTUP 1500
+#define DELAY_VFD_STARTUP 2000
+// #define IGNORE_VFD_ERROR // if defined does not force realy off when stop command fails
 #define RELAY_INACTIVITY_TIMEOUT_MS 300e3
 
 // Gate state strings for logging

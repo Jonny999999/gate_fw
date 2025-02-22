@@ -1,7 +1,6 @@
 #include "gate.hpp"
 #include <esp_timer.h>
 
-#define IGNORE_VFD_ERROR
 
 // Gate state strings for logging
 const char *GateState_str [] = {

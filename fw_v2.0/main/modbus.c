@@ -17,7 +17,8 @@ static const char *TAG = "Modbus-RTU";
 
 
 // workaround to prevent errors when doing multiple write actions at low baud rate
-#define EXTRA_DELAY_BEFORE_WRITE_MS (BAUD_RATE < 9600 ? 10 : 0) // add 10 ms delay at low baudrate
+//#define EXTRA_DELAY_BEFORE_WRITE_MS (BAUD_RATE < 9600 ? 10 : 0) // add 10 ms delay at low baudrate
+#define EXTRA_DELAY_BEFORE_WRITE_MS 100 
 // note: when a second write follows immediately it will fail without having a small delay...
 //       with higher baudrate it works fine though
 

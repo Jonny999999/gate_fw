@@ -7,7 +7,7 @@
 //==========================================
 //===== UART / RS485 / Modbus settings =====
 //==========================================
-#define CONFIG_BAUD_RATE            4800  //vfd supports: 4800, 9600, 19200, 38400
+#define CONFIG_BAUD_RATE            9600  //vfd supports: 4800, 9600, 19200, 38400
 #define CONFIG_RS485_DIR_GPIO       GPIO_NUM_4
 #define CONFIG_RS485_TX_GPIO        GPIO_NUM_17
 #define CONFIG_RS485_RX_GPIO        GPIO_NUM_16
