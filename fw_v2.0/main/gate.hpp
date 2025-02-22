@@ -17,6 +17,8 @@
 // #define IGNORE_VFD_ERROR // if defined does not force realy off when stop command fails
 #define RELAY_INACTIVITY_TIMEOUT_MS 300e3
 
+#define LOG_VFD_CURRENT_WHEN_CLOSING
+
 // Gate state strings for logging
 extern const char *GateState_str [7];
 

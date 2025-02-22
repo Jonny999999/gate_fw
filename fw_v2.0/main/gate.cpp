@@ -307,6 +307,11 @@ void Gate::handle() {
     case MOVING_CLOSING:
     {
         updatePosition();
+        #ifdef LOG_VFD_CURRENT_WHEN_CLOSING
+            float vfdCurrent;
+            vfd->getCurrent(&vfdCurrent);
+            ESP_LOGI(name, "Closing... VFD current: %05.2f A", vfdCurrent);
+        #endif
         // timeout
         if ((currentTimeUs - timestampStartUs) >= (kMovingTimeout * 1000))
         {
