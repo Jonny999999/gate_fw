@@ -100,7 +100,7 @@ void gateHandleTask(void *pvParameters)
 
 
 //#define RUN_GPIO_TEST
-#define RUN_MODBUS_TEST
+//#define RUN_MODBUS_TEST
 //#define RUN_GATE_TEST
 
 extern "C" void app_main(void)
@@ -148,7 +148,7 @@ extern "C" void app_main(void)
                CONFIG_RELAY_VFD1_GPIO,
                &vfd1,
                &buzzer,
-               15000
+               30000
     );
 
 
@@ -159,7 +159,7 @@ extern "C" void app_main(void)
                CONFIG_RELAY_VFD2_GPIO,
                &vfd2,
                &buzzer,
-               15000
+               30000
     );
 
 

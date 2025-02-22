@@ -52,6 +52,11 @@ esp_err_t VFD::start(bool directionFwd) {
 
 
 esp_err_t VFD::stop() {
+    // FIXME: find out reason whe VFD2 can not be stopped without error, when opening. Current workaround, request random register first (which triggers the error) then do actual command which works then -> invalid state before?
+    ESP_LOGW(TAG, "Stop VFD %d - WORKAROUND: Read Register first before stopping (this may fail)...", slave_addr);
+    uint16_t reg_value = 0;
+    read_modbus_register(slave_addr, VFD_REG_START_STOP, &reg_value);
+    ESP_LOGW(TAG, "Stop VFD %d - WORKAROUND done, Continue sending actual stop command now...", slave_addr);
     esp_err_t status = send_modbus_command(slave_addr, 0x06, VFD_REG_START_STOP, 0x0002);
     if (status == ESP_OK) {
         is_running = false;
@@ -123,7 +128,7 @@ esp_err_t VFD::getCurrent(float *out_current_A) {
     uint16_t reg_value = 0;
     esp_err_t status = read_modbus_register(slave_addr, VFD_REG_CURRENT, &reg_value);
     if (status == ESP_OK) {
-        *out_current_A = (float)reg_value/10;
+        *out_current_A = (float)reg_value/100;
         ESP_LOGI(TAG, "Current read for VFD %d: %d A.", slave_addr, reg_value);
     } else {
         ESP_LOGE(TAG, "Failed to read current for VFD %d. Error: 0x%x", slave_addr, status);

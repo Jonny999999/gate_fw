@@ -16,13 +16,12 @@ static const char *TAG = "Modbus-RTU";
 #define INVERT_DIR_SIGNAL 0 //RTS
 
 
-#define SEND_COMMAND_MAX_RETRIES 2
+#define SEND_COMMAND_MAX_RETRIES 1
 #define DELAY_BEFORE_RETRY_MS 100
 #define RECEIVE_TIMEOUT_MS 150 // give VFD time to respond after sending command
 
 // workaround to prevent errors when doing multiple write actions at low baud rate
-//#define EXTRA_DELAY_BEFORE_WRITE_MS (BAUD_RATE < 9600 ? 10 : 0) // add 10 ms delay at low baudrate
-#define EXTRA_DELAY_BEFORE_WRITE_MS 100 
+#define EXTRA_DELAY_BEFORE_WRITE_MS (BAUD_RATE < 9600 ? 10 : 0) // add 10 ms delay at low baudrate
 // note: when a second write follows immediately it will fail without having a small delay...
 //       with higher baudrate it works fine though
 
@@ -82,9 +81,6 @@ esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_
     esp_err_t err = 0;
     ESP_LOGD(TAG, "send_modbus_command: addr %d, func: %d, regAddr: %d, value: %d", slave_addr, function_code, reg_addr, value);
 
-    // Fix issue with errors when writing too fast by adding delay between writes:
-    //TODO: Instead add timestamp to not block unnecessary when last request was long ago anyways?
-    vTaskDelay(pdMS_TO_TICKS(EXTRA_DELAY_BEFORE_WRITE_MS));
 
     // create frame
     uint8_t frame[8];
@@ -101,7 +97,7 @@ esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_
     // log created frame
     if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG)
     {
-        printf("[%s] Sending frame with %d bytes - hex:", TAG, 8);
+        printf("[%s] Prepared command frame with %d bytes - hex:", TAG, 8);
         for (int i = 0; i < 8; i++)
         {
             printf("%02X ", frame[i]);
@@ -118,8 +114,12 @@ esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_
             ESP_LOGD(TAG, "waiting %d ms before retrying...", DELAY_BEFORE_RETRY_MS);
             vTaskDelay(pdMS_TO_TICKS(DELAY_BEFORE_RETRY_MS));
         }
-
-        vTaskDelay(pdMS_TO_TICKS(EXTRA_DELAY_BEFORE_WRITE_MS));
+        else // on first try only delay minimum delay between writes
+        {
+            // Fix issue with errors when writing too fast by adding delay between writes:
+            // TODO: Instead add timestamp to not block unnecessary when last request was long ago anyways?
+            vTaskDelay(pdMS_TO_TICKS(EXTRA_DELAY_BEFORE_WRITE_MS));
+        }
 
         // clear uart buffer in case previous responses were stored in the meantime
         uart_flush(UART_NUM);
