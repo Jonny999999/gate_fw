@@ -13,8 +13,11 @@
 #include "buzzer.hpp"
 
 // Define a delay (in milliseconds) for the VFD startup after the relay is turned on.
-#define DELAY_VFD_STARTUP 1500
+#define DELAY_VFD_STARTUP 1200
+// #define IGNORE_VFD_ERROR // if defined does not force realy off when stop command fails
 #define RELAY_INACTIVITY_TIMEOUT_MS 300e3
+
+#define LOG_VFD_CURRENT_WHEN_CLOSING
 
 // Gate state strings for logging
 extern const char *GateState_str [7];
@@ -67,7 +70,7 @@ public:
 
 private:
     // ==== CONFIG ====
-    static constexpr float kDefaultVfdFrequency = 20.0f;  // Frequency (Hz) to use when running
+    static constexpr float kDefaultVfdFrequency = 40.0f;  // Frequency (Hz) to use when running
     static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
     static constexpr uint32_t kMovingTimeout = 15e3;  // Max allowed time for continuous opening / closing movement without reaching limit
 

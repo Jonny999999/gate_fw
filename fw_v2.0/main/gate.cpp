@@ -1,7 +1,6 @@
 #include "gate.hpp"
 #include <esp_timer.h>
 
-#define IGNORE_VFD_ERROR
 
 // Gate state strings for logging
 const char *GateState_str [] = {
@@ -308,6 +307,11 @@ void Gate::handle() {
     case MOVING_CLOSING:
     {
         updatePosition();
+        #ifdef LOG_VFD_CURRENT_WHEN_CLOSING
+            float vfdCurrent;
+            vfd->getCurrent(&vfdCurrent);
+            ESP_LOGI(name, "Closing... VFD current: %05.2f A", vfdCurrent);
+        #endif
         // timeout
         if ((currentTimeUs - timestampStartUs) >= (kMovingTimeout * 1000))
         {

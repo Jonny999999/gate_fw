@@ -2,7 +2,7 @@
 #include "esp_log.h"
 #include "gpio_evaluateSwitch.hpp"
 
-#define CONTROL_LOOP_HANDLE_DELAY_MS 50
+#define CONTROL_LOOP_HANDLE_DELAY_MS 25
 
 
 //===============================
@@ -135,8 +135,8 @@ void controlTask(void *param)
                 timestampLastAction = esp_log_timestamp();
             }
             //--- timeout ---
-            #define BUTTON_PRESS_OPEN_INCREMENT_MS 2000 //400
-            #define BUTTON_PRESS_OPEN_TIME_MS 1100 // 1100
+            #define BUTTON_PRESS_OPEN_INCREMENT_MS 1500 // V1: 400
+            #define BUTTON_PRESS_OPEN_TIME_MS 2000 // V1: 1100
             else if (esp_log_timestamp() - timestampLastAction > 900)
             { // no input for more than 1200ms
                 ESP_LOGW(TAG_CTL, "Timeout - applying target duration");
@@ -178,8 +178,8 @@ void controlTask(void *param)
 
 
         // handle gates (update pos, handle limits, turn on/off...)
-        config->gateA->handle();
         config->gateB->handle();
+        config->gateA->handle();
 
         vTaskDelay(pdMS_TO_TICKS(CONTROL_LOOP_HANDLE_DELAY_MS)); // Small delay to avoid busy loop
     } // end control loop

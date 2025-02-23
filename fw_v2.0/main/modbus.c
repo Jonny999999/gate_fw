@@ -16,6 +16,10 @@ static const char *TAG = "Modbus-RTU";
 #define INVERT_DIR_SIGNAL 0 //RTS
 
 
+#define SEND_COMMAND_MAX_RETRIES 1
+#define DELAY_BEFORE_RETRY_MS 100
+#define RECEIVE_TIMEOUT_MS 150 // give VFD time to respond after sending command
+
 // workaround to prevent errors when doing multiple write actions at low baud rate
 #define EXTRA_DELAY_BEFORE_WRITE_MS (BAUD_RATE < 9600 ? 10 : 0) // add 10 ms delay at low baudrate
 // note: when a second write follows immediately it will fail without having a small delay...
@@ -69,16 +73,14 @@ uint16_t modbus_crc16(const uint8_t *data, uint8_t length)
 
 
 
-// Function to send a Modbus RTU frame
+// Function to send a Modbus RTU frame with retry logic
 // returns 0: success, -1: uart sending failed, -2: incorrect response from vfd
 esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_t reg_addr, uint16_t value)
 {
     int len;
+    esp_err_t err = 0;
     ESP_LOGD(TAG, "send_modbus_command: addr %d, func: %d, regAddr: %d, value: %d", slave_addr, function_code, reg_addr, value);
 
-    // Fix issue with errors when writing too fast by adding delay between writes:
-    //TODO: Instead add timestamp to not block unnecessary when last request was long ago anyways?
-    vTaskDelay(pdMS_TO_TICKS(EXTRA_DELAY_BEFORE_WRITE_MS));
 
     // create frame
     uint8_t frame[8];
@@ -95,7 +97,7 @@ esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_
     // log created frame
     if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG)
     {
-        printf("[%s] Sending frame with %d bytes - hex:", TAG, 8);
+        printf("[%s] Prepared command frame with %d bytes - hex:", TAG, 8);
         for (int i = 0; i < 8; i++)
         {
             printf("%02X ", frame[i]);
@@ -103,46 +105,71 @@ esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_
         printf("\n");
     }
 
-    // clear uart buffer in case previous responses were stored in the meantime
-    uart_flush(UART_NUM);
-
-    // send frame
-    len = uart_write_bytes(UART_NUM, (const char *)frame, sizeof(frame));
-    if (len == -1)
+    for (int attemptNum = 1; attemptNum <= SEND_COMMAND_MAX_RETRIES + 1; attemptNum++)
     {
-        ESP_LOGE(TAG, "failed sending frame via UART");
-        return ESP_FAIL;
-    }
-    ESP_LOGD(TAG, "sent %d bytes via uart", len);
+        ESP_LOGD(TAG, "Attempt %d of %d", attemptNum, SEND_COMMAND_MAX_RETRIES + 1);
 
-    // Receive response
-    uint8_t response[8];
-    len = uart_read_bytes(UART_NUM, response, sizeof(response), pdMS_TO_TICKS(100));
-    // log response
-    if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG)
-    {
-        printf("[%s] Received %d bytes after WRITE - hex:", TAG, len);
-        for (int i = 0; i < len; i++)
-        {
-            printf("%02X ", response[i]);
+        // delay before retry if this is not the first try
+        if (attemptNum != 1){
+            ESP_LOGD(TAG, "waiting %d ms before retrying...", DELAY_BEFORE_RETRY_MS);
+            vTaskDelay(pdMS_TO_TICKS(DELAY_BEFORE_RETRY_MS));
         }
-        printf("\n");
-    }
+        else // on first try only delay minimum delay between writes
+        {
+            // Fix issue with errors when writing too fast by adding delay between writes:
+            // TODO: Instead add timestamp to not block unnecessary when last request was long ago anyways?
+            vTaskDelay(pdMS_TO_TICKS(EXTRA_DELAY_BEFORE_WRITE_MS));
+        }
+
+        // clear uart buffer in case previous responses were stored in the meantime
+        uart_flush(UART_NUM);
+
+        len = uart_write_bytes(UART_NUM, (const char *)frame, sizeof(frame));
+        if (len == -1)
+        {
+            ESP_LOGE(TAG, "Attempt %d of %d: Failed sending frame via UART", attemptNum, SEND_COMMAND_MAX_RETRIES + 1);
+            err = ESP_FAIL;
+            continue; // next try
+        }
+
+        ESP_LOGD(TAG, "Attempt %d of %d: Successfully sent %d bytes via UART", attemptNum, SEND_COMMAND_MAX_RETRIES +1, len);
+
+        // Receive response
+        uint8_t response[8];
+        len = uart_read_bytes(UART_NUM, response, sizeof(response), pdMS_TO_TICKS(RECEIVE_TIMEOUT_MS));
+
+        // log response
+        if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG)
+        {
+            printf("[%s] Received %d bytes after WRITE - hex:", TAG, len);
+            for (int i = 0; i < len; i++)
+            {
+                printf("%02X ", response[i]);
+            }
+            printf("\n");
+        }
 
     // verify that response is correct
     // the vfd echos the same request back with 2 additional bytes
     // e.g. request: "01 06 00 02 00 64 29 E1 "   response: "01 06 00 02 00 64 29 E1 00"
-    if (memcmp(frame, response, 8) == 0)
-    {
-        ESP_LOGD(TAG, "Response matches the request. Command successful.");
-        return 0;
+        if (memcmp(frame, response, 8) == 0)
+        {
+            ESP_LOGD(TAG, "Attempt %d of %d: Response matches the request. Command successful.", attemptNum, SEND_COMMAND_MAX_RETRIES + 1);
+            return 0;
+        }
+        else
+        {
+        ESP_LOGE(TAG, "Attempt %d of %d: Response does not match the request!", attemptNum, SEND_COMMAND_MAX_RETRIES + 1);
+        err = ESP_ERR_INVALID_RESPONSE;
+        continue; // next try
+        }
     }
-    else
-    {
-        ESP_LOGE(TAG, "send_modbus_command: Response does not match the request. Communication error!");
-        return ESP_ERR_INVALID_RESPONSE;
-    }
+
+    // all retry attempts failed (since not returned in loop already)
+    ESP_LOGE(TAG, "send_modbus_command: All attempts failed.");
+    return err; // return last error
 }
+
 
 // Function to send a Modbus RTU request and receive response
 esp_err_t read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *value) {
