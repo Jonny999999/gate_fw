@@ -128,8 +128,8 @@ extern "C" void app_main(void)
     buzzer.beep(3, 50, 100);
 
     // Create VFD instances
-    VFD vfd1(0x11); // VFD 1 with address 0x11
-    VFD vfd2(0x77); // VFD 2 with address 0x77
+    VFD vfd1(11); // VFD 1 with address 0x11
+    VFD vfd2(77); // VFD 2 with address 0x77
     // Note: trying higher / more individual addresses to not be potentially confused with function codes
 
 

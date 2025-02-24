@@ -18,8 +18,10 @@
 #define RELAY_INACTIVITY_TIMEOUT_MS 300e3
 
 #define LOG_VFD_CURRENT_WHEN_CLOSING
+#define CURRENT_MONITORING_ENABLED
 
 #define DEFAULT_VFD_FREQUENCY 40 // motor speed in Hz
+#define BEEP_AT_LIMIT_SW_CHANGE
 
 // Gate state strings for logging
 extern const char *GateState_str [7];
@@ -73,6 +75,7 @@ public:
 private:
     // ==== CONFIG ====
     static constexpr float kDefaultVfdFrequency = 40.0f;  // Frequency (Hz) to use when running
+    static constexpr float kCurrentLimitAmpere = 0.5f;  // Max VFD current when closing for gate to stop
     static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
     static constexpr uint32_t kMovingTimeout = 15e3;  // Max allowed time for continuous opening / closing movement without reaching limit
 
@@ -114,6 +117,7 @@ private:
     void updatePosition();
     bool checkLimitSwitchOpenActive();
     bool checkLimitSwitchClosedActive();
+    bool checkCurrentLimitExceeded();
 
     // Private movement helper: start movement in the given direction.
     // 'opening' = true means start opening, false means start closing.

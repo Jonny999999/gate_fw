@@ -2,6 +2,7 @@
 #include <esp_timer.h>
 
 
+
 // Gate state strings for logging
 const char *GateState_str [] = {
     "IDLE_FULLY_OPEN", 
@@ -100,6 +101,14 @@ bool Gate::checkLimitSwitchOpenActive() {
         prevOpenSwitchState = current;
     }
     return current;
+}
+
+
+bool Gate::checkCurrentLimitExceeded() {
+    float vfdCurrent;
+    vfd->getCurrent(&vfdCurrent);
+    ESP_LOGD(name, "VFD current: %05.2f A", vfdCurrent);
+    return (vfdCurrent > kCurrentLimitAmpere);
 }
 
 
@@ -312,6 +321,7 @@ void Gate::handle() {
             vfd->getCurrent(&vfdCurrent);
             ESP_LOGI(name, "Closing... VFD current: %05.2f A", vfdCurrent);
         #endif
+
         // timeout
         if ((currentTimeUs - timestampStartUs) >= (kMovingTimeout * 1000))
         {
@@ -336,6 +346,14 @@ void Gate::handle() {
             stop(false);
             state = IDLE_PARTIALLY_OPEN;
         }
+        #ifdef CURRENT_MONITORING_ENABLED
+        else if (checkCurrentLimitExceeded()){
+            ESP_LOGE(name, "Max vfd current exceeded while closing! stopping");
+            stop(false);
+            buzzer->beep(1, 1500, 100);
+            state = ERROR_STATE;
+        }
+        #endif
         break;
     }
     case IDLE_FULLY_OPEN:
@@ -345,6 +363,9 @@ void Gate::handle() {
             state = IDLE_PARTIALLY_OPEN;
             positionPercent = 99;
             ESP_LOGI(name, "Gate moved away from fully open position -> switching to IDLE_PARTIALLY_OPEN");
+            #ifdef BEEP_AT_LIMIT_SW_CHANGE
+            buzzer->beep(1, 100, 50);
+            #endif
         }
         break;
     case IDLE_FULLY_CLOSED:
@@ -354,6 +375,9 @@ void Gate::handle() {
             state = IDLE_PARTIALLY_OPEN;
             positionPercent = 1;
             ESP_LOGW(name, "Gate moved away from fully closed position while off -> switching to IDLE_PARTIALLY_OPEN");
+            #ifdef BEEP_AT_LIMIT_SW_CHANGE
+            buzzer->beep(1, 100, 50);
+            #endif
         }
         break;
     case IDLE_PARTIALLY_OPEN:
@@ -363,12 +387,19 @@ void Gate::handle() {
             state = IDLE_FULLY_OPEN;
             positionPercent = 100.0f;
             ESP_LOGW(name, "Gate reached fully open position while off -> switching to IDLE_FULLY_OPEN");
+            #ifdef BEEP_AT_LIMIT_SW_CHANGE
+            buzzer->beep(1, 100, 50);
+            #endif
+
         }
         else if (checkLimitSwitchClosedActive())
         {
             state = IDLE_FULLY_CLOSED;
             positionPercent = 0.0f;
             ESP_LOGW(name, "Gate reached fully closed position while off -> switching to IDLE_FULLY_CLOSED");
+            #ifdef BEEP_AT_LIMIT_SW_CHANGE
+            buzzer->beep(1, 100, 50);
+            #endif
         }
         break;
     case WAITING_FOR_VFD_STARTUP:
