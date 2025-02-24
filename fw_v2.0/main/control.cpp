@@ -4,6 +4,10 @@
 
 #define CONTROL_LOOP_HANDLE_DELAY_MS 25
 
+#define BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS 1500 // V1: 400
+#define BUTTON_PRESS_INITIAL_OPEN_TIME_MS 2000    // V1: 1100
+
+
 
 //===============================
 //========== Variables ==========
@@ -135,13 +139,11 @@ void controlTask(void *param)
                 timestampLastAction = esp_log_timestamp();
             }
             //--- timeout ---
-            #define BUTTON_PRESS_OPEN_INCREMENT_MS 1500 // V1: 400
-            #define BUTTON_PRESS_OPEN_TIME_MS 2000 // V1: 1100
-            else if (esp_log_timestamp() - timestampLastAction > 900)
-            { // no input for more than 1200ms
-                ESP_LOGW(TAG_CTL, "Timeout - applying target duration");
-                config->gateA->updateTargetRunTime(BUTTON_PRESS_OPEN_TIME_MS + (BUTTON_PRESS_OPEN_INCREMENT_MS * countPressed));
-                config->gateB->updateTargetRunTime(BUTTON_PRESS_OPEN_TIME_MS + (BUTTON_PRESS_OPEN_INCREMENT_MS * countPressed));
+            else if (esp_log_timestamp() - timestampLastAction > std::min(BUTTON_PRESS_INITIAL_OPEN_TIME_MS, BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS) - CONTROL_LOOP_HANDLE_DELAY_MS)
+            { // no input for more than almost the currently desired runtime
+                ESP_LOGW(TAG_CTL, "Timeout waiting for further input - applying target duration");
+                config->gateA->updateTargetRunTime(BUTTON_PRESS_INITIAL_OPEN_TIME_MS + (BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS * countPressed));
+                config->gateB->updateTargetRunTime(BUTTON_PRESS_INITIAL_OPEN_TIME_MS + (BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS * countPressed));
 
                 if (countPressed > 1)
                 {

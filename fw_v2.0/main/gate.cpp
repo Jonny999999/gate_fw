@@ -133,7 +133,7 @@ void Gate::startMovement(bool opening) {
     #ifndef IGNORE_VFD_ERROR
     if (err != ESP_OK) {
         ESP_LOGE(name, "VFD starting failed!");
-        buzzer->beep(5, 100, 200);
+        buzzer->beep(5, 70, 100);
         //state = ERROR_STATE;
         return;
     }
@@ -241,7 +241,7 @@ void Gate::stop(bool forceStatePartialOpen){ // default true
     #ifndef IGNORE_VFD_ERROR
     if (err != ESP_OK) {
         ESP_LOGE(name, "VFD stop failed! -> forcing relay off");
-        buzzer->beep(5, 100, 200);
+        buzzer->beep(5, 70, 100);
         forceStopRelay();
         state = ERROR_STATE;
         return;

@@ -13,11 +13,13 @@
 #include "buzzer.hpp"
 
 // Define a delay (in milliseconds) for the VFD startup after the relay is turned on.
-#define DELAY_VFD_STARTUP 1200
+#define DELAY_VFD_STARTUP 1000
 // #define IGNORE_VFD_ERROR // if defined does not force realy off when stop command fails
 #define RELAY_INACTIVITY_TIMEOUT_MS 300e3
 
 #define LOG_VFD_CURRENT_WHEN_CLOSING
+
+#define DEFAULT_VFD_FREQUENCY 40 // motor speed in Hz
 
 // Gate state strings for logging
 extern const char *GateState_str [7];
@@ -85,7 +87,7 @@ private:
     VFD* const vfd;       // Pointer to the associated VFD object
     buzzer_t* const buzzer; // Pointer to the buzzer object
 
-    const float defaultFrequency = 40;  // Frequency (Hz) to use when running
+    const float defaultFrequency = DEFAULT_VFD_FREQUENCY;  // Frequency (Hz) to use when running
     const uint32_t runDurationMs;  // Full run duration (0% to 100%) in milliseconds
 
     uint64_t timestampStartUs; // Timestamp (in microseconds) when movement started
