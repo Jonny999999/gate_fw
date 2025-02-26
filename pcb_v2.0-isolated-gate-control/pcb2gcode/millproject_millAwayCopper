@@ -1,0 +1,89 @@
+# === Notes ===
+# web based gcode viewer:
+# https://ncviewer.com/
+
+
+# ======== EXPORT INSTRUCTION ============
+# notes about kicad export: (for milling away copper at certain places)
+# situation: 2 gnd planes with gap between and rule zone below relays
+# 1. prevent milling normal tracks with the large mill:
+#   - delete all footprints
+#   - delete all tracks (except in areas where milling e.g. under relays rule area)
+# 2. refill zones (B)
+# 3. export front and back layer to folder configured in run-pcb2gcode.sh
+
+
+#note: in/out filepaths are added by the run-pcb2gcode.sh script now, thus commented out here:
+  #back=../export/V2.1_board-ecar_isolated-B_Cu.gbr
+  #front=../export/V2.1_board-ecar_isolated-F_Cu.gbr
+  #outline=../export/V2.1_board-ecar_isolated-Edge_Cuts.gbr
+  ##note: running for each drill file separately and merging the gcode manually (4 mounting holes are in a separate gerber file)
+  #drill=../export/V2.1_board-ecar_isolated-PTH.drl
+  ##drill=../export/V2.1_board-ecar_isolated-NPTH.drl
+  #output-dir=./out
+
+
+# Common options
+metric=true
+metricoutput=true
+nog64=false
+
+#set optimized to default value, because when it was set to 0 (disable) it caused crash (runs till ram full) for some reason, since adding text to center of pcb ==> set to default
+optimise=0.00000254 #default
+backtrack=0 #if default/undefined caused unwanted moves in copper without retracting, especially at letters (seen in gcode viewer) - thus disabled this feature
+tile-x=1
+tile-y=1
+tolerance=0.0500
+zchange=30.0000
+zchange-absolute=false
+zero-start=true
+
+zsafe=1.800 #2.6 seems unnecessary high
+# head height d1,7mm screw: 1.2mm
+# head height d2,2mm torx screw: 1.8mm
+
+
+
+
+# ============================
+# ========= milling ==========
+# ============================
+mill-diameters=2mm, 0.8mm # note: ran a second time for front using 2mm bit only
+isolation-width=200 # mill away copper that is no track or plane in gerber file
+# extremely large so entire relay area is milled
+
+
+# Mill options
+extra-passes=0
+mill-feed=300 #stichel 30-60: 400mm/min   default 600mm/min
+mill-speed=20000
+mill-vertfeed=200
+# pcb_analog-matrix-selector: zone clearance: 0.5, track clearance 0.3 => offset 0.25
+
+# additional offset that is actually exactly fulfilled (except smallest mill is too large)
+offset=0.13
+voronoi=false
+#zwork=-0.2000 #using 60degree cutter resulted in ~0.42mm line
+#zwork=-0.300 #using 45degree cutter resulted in ~0.4mm line
+#zwork=-0.400 #using 30degree cutter calculates to ~0.2mm line
+
+zwork=-0.200
+mill-infeed=0.5 #maximum cutting depth per pass (multiple passes when zwork larger)
+
+
+
+
+# Note: outline and drill output is not actually used, this config is for millAwayCopper only
+
+# Outline options
+bridges=1.0000
+bridgesnum=3
+cut-feed=200
+cut-infeed=0.5000
+cut-side=back
+cut-speed=20000
+cut-vertfeed=60
+cutter-diameter=1.0000
+fill-outline=true
+zbridges=-0.6000
+zcut=-1.9000 #actual: 1.7
