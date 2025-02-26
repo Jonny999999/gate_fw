@@ -182,6 +182,7 @@ ControlConfig controlConfig = {
     .remoteCloseGpio = CONFIG_REMOTE_CLOSE_GPIO,
     .buttonOpenGpio = CONFIG_BTN_OPEN_GPIO,
     .buttonCloseGpio = CONFIG_BTN_CLOSE_GPIO,
+    .faultLedGpio = CONFIG_LED_GPIO,
     .buzzer = &buzzer
 };
 

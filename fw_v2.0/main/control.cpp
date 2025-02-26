@@ -48,6 +48,7 @@ void controlTask(void *param)
     gpio_evaluatedSwitch buttonClose(config->buttonCloseGpio, false, false);
     gpio_evaluatedSwitch remoteOpen(config->remoteOpenGpio, false, false);
     gpio_evaluatedSwitch remoteClose(config->remoteCloseGpio, false, false);
+    gpio_set_direction(config->faultLedGpio, GPIO_MODE_OUTPUT);
     ESP_LOGI(TAG_CTL, "Control task started");
 
     // control loop
@@ -76,6 +77,8 @@ void controlTask(void *param)
                 config->gateA->closeCompletely();
                 config->gateB->closeCompletely();
                 ctlState = ControlState::MOVING_TO_TARGET;
+                // clear fault led (indicates previous error during last run)
+                gpio_set_level(config->faultLedGpio, 0);
             }
             //--- button open ---
             // start opening, wait for further input
@@ -163,6 +166,14 @@ void controlTask(void *param)
             // while gate moves to target, stop with buttons
             // or reset to idle when gates have stopped
         case ControlState::MOVING_TO_TARGET:
+            // if any gate entered error state during this handle run, turn on fault led
+            if ((config->gateA->getState() == ERROR_STATE) || (config->gateB->getState() == ERROR_STATE)){
+                // note: gate is in error state for one handle() cycle only - currently it switches to IDLE in the next cycle
+                ESP_LOGE(TAG_CTL, "At least one gate is currently in ERROR_STATE, turning on fault led...");
+                gpio_set_level(config->faultLedGpio, 1);
+                // note: led is reset/turned off at next start event
+            }
+
             //--- idle when gates stopped at target or timeout ---
             if (config->gateA->getIsIdling() && config->gateB->getIsIdling())
             { // both do not move and are ready to receive new commands

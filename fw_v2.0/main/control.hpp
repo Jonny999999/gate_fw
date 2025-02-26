@@ -12,6 +12,7 @@ struct ControlConfig {
     gpio_num_t remoteCloseGpio;
     gpio_num_t buttonOpenGpio;
     gpio_num_t buttonCloseGpio;
+    gpio_num_t faultLedGpio;
     buzzer_t* buzzer;
 };
 

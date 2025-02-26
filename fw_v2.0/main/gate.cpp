@@ -143,9 +143,10 @@ void Gate::startMovement(bool opening) {
     esp_err_t err = vfd->start(opening); // start motor in desired direction
     #ifndef IGNORE_VFD_ERROR
     if (err != ESP_OK) {
-        ESP_LOGE(name, "VFD starting failed!");
+        ESP_LOGE(name, "VFD starting failed! switching to ERROR_STATE");
         buzzer->beep(5, 70, 100);
-        //state = ERROR_STATE;
+        // switch to ERROR state to prevent infinite loop of retries
+        state = ERROR_STATE;
         return;
     }
     #endif
