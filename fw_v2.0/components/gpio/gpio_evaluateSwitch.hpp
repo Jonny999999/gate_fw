@@ -22,8 +22,8 @@ extern "C"
 class gpio_evaluatedSwitch {
     public:
         //--- input ---
-        uint32_t minOnMs = 50;
-        uint32_t minOffMs = 50;
+        uint32_t minOnMs = 20;
+        uint32_t minOffMs = 20;
         gpio_evaluatedSwitch( //constructor minimal (default parameters pullup=true, inverted=false)
                 gpio_num_t gpio_num_declare
                 );

@@ -2,11 +2,14 @@
 #include "esp_log.h"
 #include "gpio_evaluateSwitch.hpp"
 
-#define CONTROL_LOOP_HANDLE_DELAY_MS 25
+#define CONTROL_LOOP_HANDLE_DELAY_MS 20
 
-#define BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS 1500 // V1: 400
-#define BUTTON_PRESS_INITIAL_OPEN_TIME_MS 2000    // V1: 1100
+#define BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS 700 // V1: 400
+#define BUTTON_PRESS_INITIAL_OPEN_TIME_MS 1900    // V1: 1100
 
+// duration open button has to be pressed continously to trigger full open
+// note this must be smaller than the input timeout which is the min of the above two values
+#define FULLY_OPEN_LONG_PRESS_DURATION_MS 600
 
 
 //===============================
@@ -124,7 +127,7 @@ void controlTask(void *param)
                 ctlState = ControlState::IDLE;
             }
             //--- open completely ---
-            else if (buttonOpen.state && buttonOpen.msPressed > 800)
+            else if (buttonOpen.state && buttonOpen.msPressed > FULLY_OPEN_LONG_PRESS_DURATION_MS)
             { // open button is pressed longer than 800ms
                 ESP_LOGW(TAG_CTL, "long press -> Opening completely");
                 config->buzzer->beep(1, 1000, 0);

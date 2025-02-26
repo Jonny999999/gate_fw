@@ -129,7 +129,7 @@ esp_err_t VFD::getCurrent(float *out_current_A) {
     esp_err_t status = read_modbus_register(slave_addr, VFD_REG_CURRENT, &reg_value);
     if (status == ESP_OK) {
         *out_current_A = (float)reg_value/100;
-        ESP_LOGI(TAG, "Current read for VFD %d: %d A.", slave_addr, reg_value);
+        ESP_LOGD(TAG, "Current read for VFD %d: %.2f A.", slave_addr, reg_value/100.0);
     } else {
         ESP_LOGE(TAG, "Failed to read current for VFD %d. Error: 0x%x", slave_addr, status);
     }

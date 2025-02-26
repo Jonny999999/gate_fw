@@ -113,9 +113,9 @@ extern "C" void app_main(void)
     modbus_init();
 
     // set loglevel
-    esp_log_level_set("Modbus-RTU", ESP_LOG_DEBUG);
+    esp_log_level_set("Modbus-RTU", ESP_LOG_WARN);
     esp_log_level_set("IO-test", ESP_LOG_INFO);
-    esp_log_level_set("VFD", ESP_LOG_DEBUG);
+    esp_log_level_set("VFD", ESP_LOG_INFO);
     esp_log_level_set("Gate1_West", ESP_LOG_INFO);
     esp_log_level_set("Gate2_East", ESP_LOG_INFO);
     esp_log_level_set("buzzer", ESP_LOG_ERROR);
@@ -149,10 +149,20 @@ extern "C" void app_main(void)
                CONFIG_RELAY_VFD1_GPIO,
                &vfd1,
                &buzzer,
-               30000
+               9000 + 1000
     );
 
 
+
+// at 45Hz 2 start time:
+// gate1 west: 9s
+// gate2 east: 11s
+
+// open:
+// west: 10s, east: 11s
+// ----
+// 50 Hz start setting 7:
+// 9s and 10s
 
     Gate gate2East("Gate2_East",
                CONFIG_SW_G2_OPEN_GPIO, 0, // active low (switch NO to GND -> optocoupler ON)
@@ -160,7 +170,7 @@ extern "C" void app_main(void)
                CONFIG_RELAY_VFD2_GPIO,
                &vfd2,
                &buzzer,
-               30000
+               10000 + 1000
     );
 
 
