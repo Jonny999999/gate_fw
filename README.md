@@ -1,16 +1,25 @@
-# V2.0 is currently in progress
-Currently working on a full rework of this project.  
-- custom pcb
-  - isolate microcontroller from long cables
+Custom pcb-design and firmware for an esp32 controlling a self-made automated sliding gate.  
+Full Documentation: https://pfusch.zone/automated-sliding-gate
+
+
+# Changelog V2.0
+- Replace old multipurpose board with a custom pcb for controlling the gate
+- custom pcb:
+  - fully isolate microcontroller from long cables and VFD noise
+  - RS485 interface
+  - Servo interface to lock the gate
+  - Preparation for Encoders
 - control motors with VFDs instead of Relays
 - firmware rework or rewrite
 
 <br>
 
-### pcb_v2.0-isolated-gate-control
+## pcb v2.0-isolated-gate-control
 - **[KiCad Project](pcb_v2.0-isolated-gate-control/)**
 - **[Schematic.pdf](pcb_v2.0-isolated-gate-control/export/schematic.pdf)**
-- **[G-code for Isolation Milling](pcb_v2.0-isolated-gate-control/pcb2gcode)**
+- **[G-code for Isolation Milling](pcb_v2.0-isolated-gate-control/pcb2gcode)**  
+  
+- **[Connection plan](doc/V2.0_connection-plan.drawio.pdf)**
 
 Schematic + layout preview:  
 <p align="center">
@@ -23,26 +32,20 @@ Schematic + layout preview:
   
 <br>
 
-Rest of this document is the readme of V1.1:
-
----
-
-Firmware for an automated sliding gate. Documentation: https://pfusch.zone/automated-sliding-gate
-
-# Photos
-Left: Photo of control-pcb + RC-module (V1.0)  
-Right: Photo of cabinet with power relays and V0.1 board (in V1.0 new board version was used and outsourced due to EMV issues when switching)
+## Photos
+Photos of the V2.0 hardware setup (new custom made pcb, control cabinet and additional box with outsourced power supply and VFDs)
 <p align="center">
-  <img src="doc/img/V1.0_controlBox.jpg" width="58%"/>
-  <img src="doc/img/V0.1_controlCabinet.jpg" width="40%"/>
+  <img src="doc/img/V2.0_pcb_isolated-gate-control.jpg" width="58%"/>
+  <img src="doc/img/V2.0_control+vfd-box.jpg" width="40%"/>
 </p>
 
-# Schema
-![image](doc/img/schema.png)
+
+<br>
+
 
 # Installation
 ### Install esp-idf
-For this project **ESP-IDF v4.4.1** is required  
+For this project **ESP-IDF v5.3** is required  
 (with other versions it most likely will not compile)
 ```bash
 #download esp-idf (verify version!)
@@ -68,7 +71,9 @@ idf.py build
 ```
 
 ### Upload
-- connect FTDI programmer to board (VCC to VCC; TX to RX; RX to TX)
+**Important:** Since V2.0 the **east Gate has to be slightly open for the upload to work**  
+(Since the gpio used for limit switch fully closed has to be pulled low during flashing)
+- connect micro-usb cable to ESP32 module on pcb
 - press REST and BOOT button
 - release RESET button (keep pressing boot)
 - run flash command:
@@ -76,22 +81,6 @@ idf.py build
 idf.py flash
 ```
 - once "connecting...' successfully, BOOT button can be released  
-Note: it is known that the **right gate opens while flashing**...  
-(the relay still gets turned off by limit switch, so there will be no damage)
-
-### Monitor
-- connect FTDI programmer to board (VCC to VCC; TX to RX; RX to TX)
-- press REST and BOOT button
-- release RESET button (keep pressing boot)
-- run monitor command:
-```bash
-idf.py monitor
-```
-- once connected release BOOT button
-- press RESET button once for restart
-
-
-
 
 
 # Usage
@@ -120,47 +109,17 @@ Note: within 1s after pressing open button only close button or remote works to 
 
 
 
+<br>
 
+---
 
-# Pin assignment
-See connection plan: [connection-plan.odp](connection-plan.odp)
-## Inputs
-### Buttons, Remote control
-Buttons in gate and panel, remote receiver switch to 12V
-| Pin | Object | Variable | Description | Wire No (box -> pcb) |
-| --- | --- | --- | --- | --- |
-| 27 | buttonOpen | GPIO_S_OPEN | S8 Button top [open] | 9 (switches to VCC) |
-| 14 | buttonClose | GPIO_S_CLOSE | S7 Button bottom [close] | 10 (switches to VCC) |
-|  |  |  |  |
-| 36 | remoteOpen | GPIO_S_REMOTE_OPEN | Remote receiver [open] | (switches to GND) |
-| 39 | remoteClose | GPIO_S_REMOTE_CLOSE | Remote receiver [close] | (switches to GND) |
+# Legacy -  Old Version V1.0
+Left: Photo of control-pcb + RC-module (V1.0)  
+Right: Photo of cabinet with power relays and V0.1 board (in V1.0 new board version was used and outsourced due to EMV issues when switching)
+<p align="center">
+  <img src="doc/img/V1.0_controlBox.jpg" width="58%"/>
+  <img src="doc/img/V0.1_controlCabinet.jpg" width="40%"/>
+</p>
 
-### Limit switches
-Limit switches switch to 12V
-| Pin | Object | Variable | Description | Wire No (box -> pcb) |
-| --- | --- | --- | --- | --- |
-| 32 |  | GPIO_B_RIGHT_OPEN | S1 right gate(1) open | 14 |
-| 33 |  | GPIO_B_RIGHT_CLOSED | S2 right gate(1) closed | 13 |
-| 25 |  | GPIO_B_LEFT_OPEN | S3 left gate(2) open | 12 |
-| 26 |  | GPIO_B_LEFT_CLOSED | S4 left gate(2) closed | 11 |
-|  |  |  | |  |
-
-
-
-## Outputs
-### Leds, buzzer
-| Pin | Object | Variable | Description |
-| --- | --- | --- | --- |
-| 12 |  |  | Buzzer/LED on the board (select via jumper) |
-| 12 |  |  |  |
-
-### Relays
-right 5x screw terminal (Servo driver):
-when gpio is high output is switched to gnd
-| Pin | Object | Variable | Description | Wire No (box -> pcb) |
-| --- | --- | --- | --- | --- |
-| 15 |  | GPIO_K_OPEN_RIGHT | ST1 K1 open right gate(1) | 6 |
-| 2 |  | GPIO_K_CLOSE_RIGHT | ST2 K2 close right gate(1) | 5 |
-| 16 |  | GPIO_K_OPEN_LEFT | ST3 K3 open left gate(2) | 4 |
-| 4 |  | GPIO_K_CLOSE_LEFT | ST4 K4 close left gate(2) | 3 |
-
+# Schema
+![image](doc/img/schema.png)
