@@ -11,6 +11,7 @@ const char *GateState_str [] = {
     "WAITING_FOR_VFD_STARTUP",
     "MOVING_OPENING",
     "MOVING_CLOSING",
+    "PAUSED_STATE",
     "ERROR_STATE"
 };
 
@@ -130,9 +131,9 @@ bool Gate::checkLimitSwitchClosedActive() {
 void Gate::startMovement(bool opening) {
     ESP_LOGI(name, "Starting movement dir=%s...", opening ? "OPENING" : "CLOSING");
     // when relay is off we need to wait for vfd startup first...
+    nextDirection = opening; // store target direction (used in case of waiting for VFD or when pause/resuming)
     if (!relayOn || ((esp_timer_get_time() - timestampRelayTurnedOnUs) < DELAY_VFD_STARTUP)) {
         startRelay();
-        nextDirection = opening;
         ESP_LOGI(name, "Waiting %d ms for VFD to boot up in state WAITING_FOR_VFD_STARTUP first...", DELAY_VFD_STARTUP);
         state = WAITING_FOR_VFD_STARTUP;
         return;
@@ -268,6 +269,53 @@ void Gate::stop(bool forceStatePartialOpen){ // default true
 
     // Do not change state here; let the state machine (handle()) update it.
 }
+
+
+
+// Public method: pause movement
+void Gate::pause() {
+    if (isMoving() == false) {
+        ESP_LOGE(name, "Pause requested, but gate is not moving.");
+        return;
+    }
+    ESP_LOGW(name, "Pause requested, stopping gate...");
+    updatePosition();  // Record accurate position before pausing
+    stop();
+    wasOpeningBeforePause = (state == MOVING_OPENING);
+    state = PAUSED_STATE;
+    pauseStartTimestampUs = esp_timer_get_time();
+    softStopRelay();
+    ESP_LOGW(name, "Gate PAUSED. Remaining time to target: %llu ms", 
+             (targetRunTimeMs * 1000 - (pauseStartTimestampUs - timestampStartUs)) / 1000);
+}
+
+// Public method: resume movement
+void Gate::resume() {
+    if (state != PAUSED_STATE) {
+        ESP_LOGW(name, "Resume requested, but gate is not paused.");
+        return;
+    }
+    uint64_t currentTimeUs = esp_timer_get_time();
+    uint64_t elapsedSinceStart = pauseStartTimestampUs - timestampStartUs;
+    targetRunTimeMs = (targetRunTimeMs * 1000 - elapsedSinceStart) / 1000;
+    if (targetRunTimeMs <= 0) {
+        ESP_LOGW(name, "No remaining run time, cannot resume.");
+        stop(false);
+        state = IDLE_PARTIALLY_OPEN;
+        return;
+    }
+    ESP_LOGI(name, "Resuming gate movement. Remaining target run time: %llu ms", targetRunTimeMs);
+    startMovement(wasOpeningBeforePause);
+}
+
+// Public method: cancel movement
+void Gate::cancel() {
+    ESP_LOGI(name, "Cancel requested. Stopping gate immediately.");
+    stop(true);
+    state = IDLE_PARTIALLY_OPEN;
+}
+
+
 
 
 

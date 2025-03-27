@@ -35,6 +35,7 @@ enum GateState {
     WAITING_FOR_VFD_STARTUP,
     MOVING_OPENING,
     MOVING_CLOSING,
+    PAUSED_STATE,
     ERROR_STATE
 };
 
@@ -64,6 +65,9 @@ public:
     void closeCompletely();
     void updateTargetRunTime(uint32_t ms);
     void stop(bool forceStatePartialOpen = true);
+    void pause();
+    void resume();
+    void cancel();
 
     // The state machine to be called periodically.
     void handle();
@@ -71,6 +75,8 @@ public:
     // Retrieve the current state.
     GateState getState() const;
     bool getIsIdling() const {return state == IDLE_FULLY_OPEN || state == IDLE_FULLY_CLOSED || state == IDLE_PARTIALLY_OPEN;};
+    bool isMoving() const {return state == MOVING_CLOSING || state == MOVING_OPENING || state == WAITING_FOR_VFD_STARTUP;};
+    bool isClosing() const {return state == MOVING_CLOSING;};
 
 
 private:
@@ -110,6 +116,10 @@ private:
     // Variables to track previous state of limit switches (for logging changes)
     bool prevOpenSwitchState;
     bool prevClosedSwitchState;
+
+    // Variables for pause/resume support
+    bool wasOpeningBeforePause = false;
+    uint64_t pauseStartTimestampUs = 0;
 
     // Private helper methods.
     void startRelay();
