@@ -42,8 +42,8 @@ Gate::Gate(const char *name,
     prevOpenSwitchState = checkLimitSwitchOpenActive();
     prevClosedSwitchState = checkLimitSwitchClosedActive();
     ESP_LOGW(name, "GPIO pins and variables initialized.");
-    // initially start VFD immediately (will likely open?)
-    startRelay();
+    // initially start VFD immediately after startup (?):
+    // startRelay();
 }
 
 
