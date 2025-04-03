@@ -13,12 +13,15 @@
 #include "buzzer.hpp"
 
 // Define a delay (in milliseconds) waited for the VFD startup after the relay is turned on.
-#define DELAY_VFD_STARTUP 800 
+#define DELAY_VFD_STARTUP 870
     // 900 worked well, but feels long...
+    // 800 west gate unreliable sometimes it does not start...
     // 700 too short, west gate did not start properly
     // it seems VFD recognizes command, but needs some time to finish booting and only starts later anyways
+// TODO: test individual delay for each VFD
+
 // #define IGNORE_VFD_ERROR // if defined does not force realy off when stop command fails
-#define RELAY_INACTIVITY_TIMEOUT_MS (2*60 + 30)*60*1000  // 1h too short (often off during active day) -> 2h 30min
+#define RELAY_INACTIVITY_TIMEOUT_MS (3*60 + 0)*60*1000  // 1h too short (often off during active day) -> 3h 0min
 
 // #define LOG_VFD_CURRENT_WHEN_CLOSING
 #define CURRENT_MONITORING_ENABLED
