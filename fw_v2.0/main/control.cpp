@@ -34,14 +34,25 @@ const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET", "
 
 // Control state variables
 static ControlState ctlState = ControlState::IDLE;
+
+// user input
 static uint32_t timestampLastAction;
+static uint8_t countPressed = 0;
+
+// light barrier
 static uint32_t timestampLastBarrierChange = 0;
 static uint32_t timestampLastCountdownBeep;
-static uint8_t countPressed = 0;
-static const char *TAG_CTL = "control";
+
+// fault-led handling
+uint32_t timestampLastLedBlink = 0;
+bool ledBlinkState = false;
 
 // gate + buzzer objects and GPIO assignment passed from main
 ControlConfig *config;
+
+// logging
+static const char *TAG_CTL = "control";
+
 
 
 
@@ -234,6 +245,7 @@ void controlTask(void *param)
             //--- light-barrier obstructed while closing ---
             else if ((config->gateA->getIsClosing() || config->gateB->getIsClosing()) && lightBarrierIsObstructed())
             {
+                config->buzzer->beep(4, 150, 100);
                 ESP_LOGE(TAG_CTL, "Lightbarrier got obstructed while a gate is closing => pausing movement");
                 gpio_set_level(config->faultLedGpio, 1);
                 ctlState = ControlState::MOVEMENT_PAUSED;
@@ -279,6 +291,7 @@ void controlTask(void *param)
                     config->gateA->resume();
                     config->gateB->resume();
                     ctlState = ControlState::MOVING_TO_TARGET;
+                    gpio_set_level(config->faultLedGpio, 0); // turn off fault led
                 }
             }
             // --- cancel movement entirely when obstructed for too long ---
@@ -289,11 +302,23 @@ void controlTask(void *param)
                 config->gateB->cancel();
                 config->buzzer->beep(1, 1000, 0);
                 ctlState = ControlState::IDLE;
+                gpio_set_level(config->faultLedGpio, 1); // turn on fault led
             }
             // --- debug log ---
             else
             {
                 ESP_LOGD(TAG_CTL, "Lightbarrier is still obstructed, waiting for barrier clear or timeout in MOVEMENT_PAUSED state");
+
+                // blink fault led slowly while in MOVEMENT_PAUSED state
+                #define LED_PAUSED_STATE_BLINK_INTERVAL 700
+                uint32_t now = esp_log_timestamp();
+                // toggle LED if interval passed
+                if (now - timestampLastLedBlink >= LED_PAUSED_STATE_BLINK_INTERVAL)
+                {
+                    ledBlinkState = !ledBlinkState;
+                    gpio_set_level(config->faultLedGpio, ledBlinkState);
+                    timestampLastLedBlink = now;
+                }
             }
             break;
         } // end switch
