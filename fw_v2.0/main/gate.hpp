@@ -24,8 +24,10 @@
 #define DEFAULT_VFD_FREQUENCY 50 // motor speed in Hz
 #define BEEP_AT_LIMIT_SW_CHANGE
 
+#define PAUSED_SWITCH_TO_IDLE_TIMEOUT_MS 30*1000
+
 // Gate state strings for logging
-extern const char *GateState_str [7];
+extern const char *GateState_str [8];
 
 // Gate state definitions.
 enum GateState {
@@ -73,10 +75,10 @@ public:
     void handle();
 
     // Retrieve the current state.
-    GateState getState() const;
+    GateState getState() const {return state;};
     bool getIsIdling() const {return state == IDLE_FULLY_OPEN || state == IDLE_FULLY_CLOSED || state == IDLE_PARTIALLY_OPEN;};
-    bool isMoving() const {return state == MOVING_CLOSING || state == MOVING_OPENING || state == WAITING_FOR_VFD_STARTUP;};
-    bool isClosing() const {return state == MOVING_CLOSING;};
+    bool getIsMoving() const {return state == MOVING_CLOSING || state == MOVING_OPENING || state == WAITING_FOR_VFD_STARTUP;};
+    bool getIsClosing() const {return state == MOVING_CLOSING;};
 
 
 private:

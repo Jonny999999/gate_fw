@@ -11,6 +11,12 @@
 // note this must be smaller than the input timeout which is the min of the above two values
 #define FULLY_OPEN_LONG_PRESS_DURATION_MS 600
 
+#define BARRIER_IS_IGNORED 0 // if 1 light-barrier is always considered free / not-obstructed
+#define BARRIER_DELAY_BEFORE_RESTART_MS 2000 // time after which movement is resumed after barrier is free again
+#define BARRIER_WAIT_FOR_FREE_TIMEOUT_MS 10000 // if barrier is obstructed longer than that the gate no longer re-started after clear
+#define BARRIER_BEEP_INTERVAL_MAX_MS 500 // interval buzzer beeps when barrier just freed
+#define BARRIER_BEEP_INTERVAL_MIN_MS 60  // interval buzzer beeps when movement is due
+
 
 //===============================
 //========== Variables ==========
@@ -20,18 +26,49 @@ enum class ControlState
 {
     IDLE,
     WAIT_FOR_INPUT,
-    MOVING_TO_TARGET
+    MOVING_TO_TARGET,
+    MOVEMENT_PAUSED
 };
-const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET"};
+const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET", "MOVEMENT_PAUSED"};
 // TODO: add and handle state e.g. LOCKED
 
 // Control state variables
 static ControlState ctlState = ControlState::IDLE;
 static uint32_t timestampLastAction;
+static uint32_t timestampLastBarrierChange = 0;
+static uint32_t timestampLastCountdownBeep;
 static uint8_t countPressed = 0;
 static const char *TAG_CTL = "control";
 
+// gate + buzzer objects and GPIO assignment passed from main
+ControlConfig *config;
 
+
+
+//===============================
+//========== Functions ==========
+//===============================
+// helper function to determine whether light-barrier is obstructed, also updates global timestampLastBarrierChange
+bool lightBarrierIsObstructed()
+{
+    // when ignoring the light barrier it is always considered free / not obstructed
+#if (BARRIER_IS_IGNORED)
+    return false
+#endif
+    static bool stateOld = false;
+    // when obstructed:
+    // - light barrier pulls 12V input to GND
+    // - optocoupler turns on -> pulls 3V3 to GND
+    bool stateNew = !(gpio_get_level(config->lightBarrierGpio));
+    // track last change
+    if (stateNew != stateOld)
+    {
+        ESP_LOGW(TAG_CTL, "Info: light-barrier changed state to '%s'", stateNew ? "obstructed" : "free");
+        stateOld = stateNew;
+        timestampLastBarrierChange = esp_log_timestamp();
+    }
+    return stateNew;
+}
 
 
 
@@ -40,7 +77,8 @@ static const char *TAG_CTL = "control";
 //================================
 void controlTask(void *param)
 {
-    auto *config = static_cast<ControlConfig *>(param);
+    // extract parameters passed at task creation
+    config = static_cast<ControlConfig *>(param);
 
     // Initialize buttons with GPIOs from config
     ESP_LOGI(TAG_CTL, "Initializing evaluated switch instances for buttons...");
@@ -48,6 +86,7 @@ void controlTask(void *param)
     gpio_evaluatedSwitch buttonClose(config->buttonCloseGpio, false, false);
     gpio_evaluatedSwitch remoteOpen(config->remoteOpenGpio, false, false);
     gpio_evaluatedSwitch remoteClose(config->remoteCloseGpio, false, false);
+    gpio_set_direction(config->lightBarrierGpio, GPIO_MODE_INPUT);
     gpio_set_direction(config->faultLedGpio, GPIO_MODE_OUTPUT);
     ESP_LOGI(TAG_CTL, "Control task started");
 
@@ -72,6 +111,7 @@ void controlTask(void *param)
             // close gates completely
             if (buttonClose.risingEdge)
             {
+                // TODO: prevent closing start when light barrier obstructed, or is queuing that event intended? e.g. start already while walking through
                 ESP_LOGW(TAG_CTL, "Closing completely");
                 config->buzzer->beep(1, 1000, 0);
                 config->gateA->closeCompletely();
@@ -167,7 +207,8 @@ void controlTask(void *param)
             // or reset to idle when gates have stopped
         case ControlState::MOVING_TO_TARGET:
             // if any gate entered error state during this handle run, turn on fault led
-            if ((config->gateA->getState() == ERROR_STATE) || (config->gateB->getState() == ERROR_STATE)){
+            if ((config->gateA->getState() == ERROR_STATE) || (config->gateB->getState() == ERROR_STATE))
+            {
                 // note: gate is in error state for one handle() cycle only - currently it switches to IDLE in the next cycle
                 ESP_LOGE(TAG_CTL, "At least one gate is currently in ERROR_STATE, turning on fault led...");
                 gpio_set_level(config->faultLedGpio, 1);
@@ -188,6 +229,71 @@ void controlTask(void *param)
                 config->gateB->stop();
                 config->buzzer->beep(1, 400, 0);
                 // note: controlState gets switched in above case when WAIT_LOCK is actually over (both gates IDLE)
+            }
+
+            //--- light-barrier obstructed while closing ---
+            else if ((config->gateA->getIsClosing() || config->gateB->getIsClosing()) && lightBarrierIsObstructed())
+            {
+                ESP_LOGE(TAG_CTL, "Lightbarrier got obstructed while a gate is closing => pausing movement");
+                gpio_set_level(config->faultLedGpio, 1);
+                ctlState = ControlState::MOVEMENT_PAUSED;
+                config->gateA->pause();
+                config->gateB->pause();
+            }
+            break;
+
+            //-----------------------------
+            //------ MOVEMENT_PAUSED ------
+            //-----------------------------
+        case ControlState::MOVEMENT_PAUSED:
+            // --- cancel pending movement at any user input ---
+            if (buttonClose.risingEdge || buttonOpen.risingEdge || remoteOpen.risingEdge || remoteClose.risingEdge)
+            {
+                ESP_LOGW(TAG_CTL, "User event received while waiting for barrier => cancel pending movement");
+                config->gateA->cancel();
+                config->gateB->cancel();
+                config->buzzer->beep(1, 1000, 0);
+                ctlState = ControlState::IDLE;
+            }
+            // light barrier is no longer obstructed -> decide whether to restart
+            else if (!lightBarrierIsObstructed())
+            {
+                int timeRemaining = BARRIER_DELAY_BEFORE_RESTART_MS - (esp_log_timestamp() - timestampLastBarrierChange);
+
+                // --- Buzzer countdown ---
+                // calculate beep interval based on remaning time (beep faster when closer to start)
+                uint32_t beepInterval = BARRIER_BEEP_INTERVAL_MIN_MS +
+                                        (timeRemaining * (BARRIER_BEEP_INTERVAL_MAX_MS - BARRIER_BEEP_INTERVAL_MIN_MS)) /
+                                            BARRIER_DELAY_BEFORE_RESTART_MS;
+                // trigger next beep if due
+                if (esp_log_timestamp() - timestampLastCountdownBeep >= beepInterval)
+                {
+                    config->buzzer->beep(1, 80, 0); // trigger 1 beep, 80ms on, no delay
+                    timestampLastCountdownBeep = esp_log_timestamp();
+                }
+
+                // --- continue movement ---
+                if (timeRemaining <= 0)
+                {
+                    ESP_LOGW(TAG_CTL, "Barrier no longer obstructed for longer than %d -> resume movement", BARRIER_DELAY_BEFORE_RESTART_MS);
+                    config->gateA->resume();
+                    config->gateB->resume();
+                    ctlState = ControlState::MOVING_TO_TARGET;
+                }
+            }
+            // --- cancel movement entirely when obstructed for too long ---
+            else if ((esp_log_timestamp() - timestampLastBarrierChange) > BARRIER_WAIT_FOR_FREE_TIMEOUT_MS)
+            {
+                ESP_LOGE(TAG_CTL, "Barrier obstructed longer than %d ms -> wont continue automatically after clearing the barrier -> switching to IDLE", BARRIER_WAIT_FOR_FREE_TIMEOUT_MS);
+                config->gateA->cancel();
+                config->gateB->cancel();
+                config->buzzer->beep(1, 1000, 0);
+                ctlState = ControlState::IDLE;
+            }
+            // --- debug log ---
+            else
+            {
+                ESP_LOGD(TAG_CTL, "Lightbarrier is still obstructed, waiting for barrier clear or timeout in MOVEMENT_PAUSED state");
             }
             break;
         } // end switch
