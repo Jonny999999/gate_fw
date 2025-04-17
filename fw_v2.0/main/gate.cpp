@@ -261,7 +261,7 @@ void Gate::stop(bool forceStatePartialOpen){ // default true
         return;
     }
     #endif
-    buzzer->beep(1, 100, 200);
+    // buzzer->beep(1, 100, 200);
     softStopRelay();
 
     // by default set state to partially open, when stopped due to limit switch the state is set manually

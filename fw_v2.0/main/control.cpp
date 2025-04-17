@@ -1,8 +1,10 @@
 #include "control.hpp"
 #include "esp_log.h"
 #include "gpio_evaluateSwitch.hpp"
+#include <stdlib.h>
 
-#define CONTROL_LOOP_HANDLE_DELAY_MS 20
+// TODO more delay in IDLE state / only fast when running?
+#define CONTROL_LOOP_HANDLE_DELAY_MS 10
 
 #define BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS 700 // V1: 400
 #define BUTTON_PRESS_INITIAL_OPEN_TIME_MS 1900    // V1: 1100
@@ -12,10 +14,10 @@
 #define FULLY_OPEN_LONG_PRESS_DURATION_MS 600
 
 #define BARRIER_IS_IGNORED 0 // if 1 light-barrier is always considered free / not-obstructed
-#define BARRIER_DELAY_BEFORE_RESTART_MS 2000 // time after which movement is resumed after barrier is free again
-#define BARRIER_WAIT_FOR_FREE_TIMEOUT_MS 10000 // if barrier is obstructed longer than that the gate no longer re-started after clear
-#define BARRIER_BEEP_INTERVAL_MAX_MS 500 // interval buzzer beeps when barrier just freed
-#define BARRIER_BEEP_INTERVAL_MIN_MS 60  // interval buzzer beeps when movement is due
+#define BARRIER_DELAY_BEFORE_RESTART_MS 4000 // time after which movement is resumed after barrier is free again
+#define BARRIER_WAIT_FOR_FREE_TIMEOUT_MS 8000 // if barrier is obstructed longer than that continously the gate is no longer re-started after clear
+#define BARRIER_BEEP_INTERVAL_MAX_MS 1000 // interval buzzer beeps when barrier just freed
+#define BARRIER_BEEP_INTERVAL_MIN_MS 20  // interval buzzer beeps when movement is due
 
 
 //===============================
@@ -245,10 +247,13 @@ void controlTask(void *param)
             //--- light-barrier obstructed while closing ---
             else if ((config->gateA->getIsClosing() || config->gateB->getIsClosing()) && lightBarrierIsObstructed())
             {
-                config->buzzer->beep(4, 150, 100);
+                config->buzzer->beep(4, 100, 50);
                 ESP_LOGE(TAG_CTL, "Lightbarrier got obstructed while a gate is closing => pausing movement");
                 gpio_set_level(config->faultLedGpio, 1);
                 ctlState = ControlState::MOVEMENT_PAUSED;
+                // additionally manually reset timestamp so the timeout starts when entering the PAUSED mode 
+                // otherwise immediately timeouts when it was already active before pressing start button (e.g stand in gate some time and start)
+                timestampLastBarrierChange = esp_log_timestamp();
                 config->gateA->pause();
                 config->gateB->pause();
             }
@@ -258,6 +263,17 @@ void controlTask(void *param)
             //------ MOVEMENT_PAUSED ------
             //-----------------------------
         case ControlState::MOVEMENT_PAUSED:
+            // always blink fault led slowly while in MOVEMENT_PAUSED state
+            #define LED_PAUSED_STATE_BLINK_INTERVAL 200
+            uint32_t now = esp_log_timestamp();
+            // toggle LED if interval passed
+            if (now - timestampLastLedBlink >= LED_PAUSED_STATE_BLINK_INTERVAL)
+            {
+                ledBlinkState = !ledBlinkState;
+                gpio_set_level(config->faultLedGpio, ledBlinkState);
+                timestampLastLedBlink = now;
+            }
+
             // --- cancel pending movement at any user input ---
             if (buttonClose.risingEdge || buttonOpen.risingEdge || remoteOpen.risingEdge || remoteClose.risingEdge)
             {
@@ -265,6 +281,7 @@ void controlTask(void *param)
                 config->gateA->cancel();
                 config->gateB->cancel();
                 config->buzzer->beep(1, 1000, 0);
+                gpio_set_level(config->faultLedGpio, 0); // turn off fault led
                 ctlState = ControlState::IDLE;
             }
             // light barrier is no longer obstructed -> decide whether to restart
@@ -278,9 +295,11 @@ void controlTask(void *param)
                                         (timeRemaining * (BARRIER_BEEP_INTERVAL_MAX_MS - BARRIER_BEEP_INTERVAL_MIN_MS)) /
                                             BARRIER_DELAY_BEFORE_RESTART_MS;
                 // trigger next beep if due
-                if (esp_log_timestamp() - timestampLastCountdownBeep >= beepInterval)
+                if (esp_log_timestamp() - timestampLastCountdownBeep >= beepInterval && timeRemaining > BARRIER_BEEP_INTERVAL_MIN_MS)
                 {
-                    config->buzzer->beep(1, 80, 0); // trigger 1 beep, 80ms on, no delay
+                    uint32_t buzzerOnDuration = std::min(beepInterval, (uint32_t)70);
+                    ESP_LOGD(TAG_CTL, "remaining wait time: %d, current buzzer on-duration: %ld, triggering next beep...", timeRemaining, buzzerOnDuration);
+                    config->buzzer->beep(1, buzzerOnDuration, 0); // trigger 1 beep no delay
                     timestampLastCountdownBeep = esp_log_timestamp();
                 }
 
@@ -308,18 +327,8 @@ void controlTask(void *param)
             else
             {
                 ESP_LOGD(TAG_CTL, "Lightbarrier is still obstructed, waiting for barrier clear or timeout in MOVEMENT_PAUSED state");
-
-                // blink fault led slowly while in MOVEMENT_PAUSED state
-                #define LED_PAUSED_STATE_BLINK_INTERVAL 700
-                uint32_t now = esp_log_timestamp();
-                // toggle LED if interval passed
-                if (now - timestampLastLedBlink >= LED_PAUSED_STATE_BLINK_INTERVAL)
-                {
-                    ledBlinkState = !ledBlinkState;
-                    gpio_set_level(config->faultLedGpio, ledBlinkState);
-                    timestampLastLedBlink = now;
-                }
             }
+
             break;
         } // end switch
 
