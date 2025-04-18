@@ -29,9 +29,9 @@ enum class ControlState
     IDLE,
     WAIT_FOR_INPUT,
     MOVING_TO_TARGET,
-    MOVEMENT_PAUSED
+    CLOSING_MOVEMENT_PAUSED
 };
-const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET", "MOVEMENT_PAUSED"};
+const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET", "CLOSING_MOVEMENT_PAUSED"};
 // TODO: add and handle state e.g. LOCKED
 
 // Control state variables
@@ -125,13 +125,21 @@ void controlTask(void *param)
             if (buttonClose.risingEdge)
             {
                 // TODO: prevent closing start when light barrier obstructed, or is queuing that event intended? e.g. start already while walking through
-                ESP_LOGW(TAG_CTL, "Closing completely");
-                config->buzzer->beep(1, 1000, 0);
-                config->gateA->closeCompletely();
-                config->gateB->closeCompletely();
-                ctlState = ControlState::MOVING_TO_TARGET;
-                // clear fault led (indicates previous error during last run)
-                gpio_set_level(config->faultLedGpio, 0);
+                ESP_LOGW(TAG_CTL, "Button close pressed - Closing completely");
+                timestampLastAction = esp_log_timestamp();
+                if (lightBarrierIsObstructed()){
+                    // barrier is obstructed -> wait for clear in CLOSING_MOVEMENT_PAUSED state before starting
+                    ESP_LOGE(TAG_CTL, "Close command received but barrier currently obstructed saving close request -> switching to PAUSED");
+                    ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
+                } else {
+                    // barrier not obstructed -> close immediately
+                    config->buzzer->beep(1, 1000, 0);
+                    config->gateA->closeCompletely();
+                    config->gateB->closeCompletely();
+                    ctlState = ControlState::MOVING_TO_TARGET;
+                    // clear fault led (indicates previous error during last run)
+                    gpio_set_level(config->faultLedGpio, 0);
+                }
             }
             //--- button open ---
             // start opening, wait for further input
@@ -250,7 +258,7 @@ void controlTask(void *param)
                 config->buzzer->beep(4, 100, 50);
                 ESP_LOGE(TAG_CTL, "Lightbarrier got obstructed while a gate is closing => pausing movement");
                 gpio_set_level(config->faultLedGpio, 1);
-                ctlState = ControlState::MOVEMENT_PAUSED;
+                ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
                 // additionally manually reset timestamp so the timeout starts when entering the PAUSED mode 
                 // otherwise immediately timeouts when it was already active before pressing start button (e.g stand in gate some time and start)
                 timestampLastBarrierChange = esp_log_timestamp();
@@ -259,11 +267,11 @@ void controlTask(void *param)
             }
             break;
 
-            //-----------------------------
-            //------ MOVEMENT_PAUSED ------
-            //-----------------------------
-        case ControlState::MOVEMENT_PAUSED:
-            // always blink fault led slowly while in MOVEMENT_PAUSED state
+            //-------------------------------------
+            //------ CLOSING_MOVEMENT_PAUSED ------
+            //-------------------------------------
+        case ControlState::CLOSING_MOVEMENT_PAUSED:
+            // always blink fault led slowly while in CLOSING_MOVEMENT_PAUSED state
             #define LED_PAUSED_STATE_BLINK_INTERVAL 200
             uint32_t now = esp_log_timestamp();
             // toggle LED if interval passed
@@ -307,8 +315,19 @@ void controlTask(void *param)
                 if (timeRemaining <= 0)
                 {
                     ESP_LOGW(TAG_CTL, "Barrier no longer obstructed for longer than %d -> resume movement", BARRIER_DELAY_BEFORE_RESTART_MS);
-                    config->gateA->resume();
-                    config->gateB->resume();
+                    // - in case movement was stopped we need to resume
+                    // - in case gate did not start (obstructed at button press) we need to start movement initially
+
+                    if (config->gateA->getIsIdling()) // any IDLE state
+                        config->gateA->closeCompletely();
+                    else // likely PAUSED state
+                        config->gateA->resume();
+
+                    if (config->gateB->getIsIdling()) // any IDLE state
+                        config->gateB->closeCompletely();
+                    else // likely PAUSED state
+                        config->gateB->resume();
+
                     ctlState = ControlState::MOVING_TO_TARGET;
                     gpio_set_level(config->faultLedGpio, 0); // turn off fault led
                 }
@@ -326,7 +345,7 @@ void controlTask(void *param)
             // --- debug log ---
             else
             {
-                ESP_LOGD(TAG_CTL, "Lightbarrier is still obstructed, waiting for barrier clear or timeout in MOVEMENT_PAUSED state");
+                ESP_LOGD(TAG_CTL, "Lightbarrier is still obstructed, waiting for barrier clear or timeout in CLOSING_MOVEMENT_PAUSED state");
             }
 
             break;
