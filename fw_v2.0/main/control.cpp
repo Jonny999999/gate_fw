@@ -19,6 +19,9 @@
 #define BARRIER_BEEP_INTERVAL_MAX_MS 1000 // interval buzzer beeps when barrier just freed
 #define BARRIER_BEEP_INTERVAL_MIN_MS 20  // interval buzzer beeps when movement is due
 
+#define DEBUG_BARRIER_PASSTHROUGH_LED_IN_IDLE 1
+#define DEBUG_BARRIER_BEEP_ON_CHANGE 0
+
 
 //===============================
 //========== Variables ==========
@@ -76,6 +79,11 @@ bool lightBarrierIsObstructed()
     // track last change
     if (stateNew != stateOld)
     {
+        // beep on change
+        #if DEBUG_BARRIER_BEEP_ON_CHANGE
+            config->buzzer->beep(1, 30, 0);
+        #endif
+        // update changed timestamp
         ESP_LOGW(TAG_CTL, "Info: light-barrier changed state to '%s'", stateNew ? "obstructed" : "free");
         stateOld = stateNew;
         timestampLastBarrierChange = esp_log_timestamp();
@@ -127,13 +135,13 @@ void controlTask(void *param)
                 // TODO: prevent closing start when light barrier obstructed, or is queuing that event intended? e.g. start already while walking through
                 ESP_LOGW(TAG_CTL, "Button close pressed - Closing completely");
                 timestampLastAction = esp_log_timestamp();
+                config->buzzer->beep(1, 1000, 0);
                 if (lightBarrierIsObstructed()){
                     // barrier is obstructed -> wait for clear in CLOSING_MOVEMENT_PAUSED state before starting
                     ESP_LOGE(TAG_CTL, "Close command received but barrier currently obstructed saving close request -> switching to PAUSED");
                     ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
                 } else {
                     // barrier not obstructed -> close immediately
-                    config->buzzer->beep(1, 1000, 0);
                     config->gateA->closeCompletely();
                     config->gateB->closeCompletely();
                     ctlState = ControlState::MOVING_TO_TARGET;
@@ -173,6 +181,12 @@ void controlTask(void *param)
                 config->gateB->openCompletely();
                 ctlState = ControlState::MOVING_TO_TARGET;
             }
+            //--- debug barrier ---
+            // pass through light-barrier state to fault led for debugging
+            #if DEBUG_BARRIER_PASSTHROUGH_LED_IN_IDLE
+                gpio_set_level(config->faultLedGpio, lightBarrierIsObstructed());
+            #endif
+
             break;
 
             //--------------------------
