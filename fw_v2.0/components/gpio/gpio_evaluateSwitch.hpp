@@ -22,8 +22,8 @@ extern "C"
 class gpio_evaluatedSwitch {
     public:
         //--- input ---
-        uint32_t minOnMs = 20;
-        uint32_t minOffMs = 20;
+        uint32_t minOnMs = 40;  // note: default is 50, 20 triggered multiple events on open button 
+        uint32_t minOffMs = 40; // TODO: add this as option to constructor
         gpio_evaluatedSwitch( //constructor minimal (default parameters pullup=true, inverted=false)
                 gpio_num_t gpio_num_declare
                 );
