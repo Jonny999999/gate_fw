@@ -20,8 +20,9 @@ extern "C" {
 
 
 static const char *TAG = "main";
-//create buzzer object on pin 12 with gap between queued events of 500ms 
-buzzer_t buzzer(CONFIG_BUZZER_GPIO, 100);
+//create buzzer object 
+// configured with 0ms gap between beep events
+buzzer_t buzzer(CONFIG_BUZZER_GPIO, 0);
 
 //======================================
 //============ buzzer task =============
@@ -183,6 +184,7 @@ ControlConfig controlConfig = {
     .buttonOpenGpio = CONFIG_BTN_OPEN_GPIO,
     .buttonCloseGpio = CONFIG_BTN_CLOSE_GPIO,
     .faultLedGpio = CONFIG_LED_GPIO,
+    .lightBarrierGpio = CONFIG_LIGHTBARRIER_GPIO,
     .buzzer = &buzzer
 };
 

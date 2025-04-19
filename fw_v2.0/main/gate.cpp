@@ -11,6 +11,7 @@ const char *GateState_str [] = {
     "WAITING_FOR_VFD_STARTUP",
     "MOVING_OPENING",
     "MOVING_CLOSING",
+    "PAUSED_STATE",
     "ERROR_STATE"
 };
 
@@ -130,9 +131,9 @@ bool Gate::checkLimitSwitchClosedActive() {
 void Gate::startMovement(bool opening) {
     ESP_LOGI(name, "Starting movement dir=%s...", opening ? "OPENING" : "CLOSING");
     // when relay is off we need to wait for vfd startup first...
+    nextDirection = opening; // store target direction (used in case of waiting for VFD or when pause/resuming)
     if (!relayOn || ((esp_timer_get_time() - timestampRelayTurnedOnUs) < DELAY_VFD_STARTUP)) {
         startRelay();
-        nextDirection = opening;
         ESP_LOGI(name, "Waiting %d ms for VFD to boot up in state WAITING_FOR_VFD_STARTUP first...", DELAY_VFD_STARTUP);
         state = WAITING_FOR_VFD_STARTUP;
         return;
@@ -162,6 +163,7 @@ void Gate::startMovement(bool opening) {
 }
 
 
+// TODO: handle direct direction change - in start methods check current state, stop first
 
 // Public method: runTo target percentage.
 void Gate::runTo(float target) {
@@ -241,7 +243,7 @@ void Gate::closeCompletely() {
 
 // Public method: update target run time e.g. while already opening
 void Gate::updateTargetRunTime(uint32_t ms) {
-    ESP_LOGI(name, "Received command: To update target run duration to %ld", ms);
+    ESP_LOGI(name, "Received command: To update target run duration from %lld to %ld", targetRunTimeMs, ms);
     // TODO some checks required? only update when running? limit to range?
     targetRunTimeMs = ms;
 }
@@ -259,7 +261,7 @@ void Gate::stop(bool forceStatePartialOpen){ // default true
         return;
     }
     #endif
-    buzzer->beep(1, 100, 200);
+    // buzzer->beep(1, 100, 200);
     softStopRelay();
 
     // by default set state to partially open, when stopped due to limit switch the state is set manually
@@ -268,6 +270,53 @@ void Gate::stop(bool forceStatePartialOpen){ // default true
 
     // Do not change state here; let the state machine (handle()) update it.
 }
+
+
+
+// Public method: pause movement
+void Gate::pause() {
+    if (getIsMoving() == false) {
+        ESP_LOGE(name, "Pause requested, but gate is not moving.");
+        return;
+    }
+    ESP_LOGW(name, "Pause requested, stopping gate...");
+    updatePosition();  // Record accurate position before pausing
+    stop();
+    wasOpeningBeforePause = (state == MOVING_OPENING);
+    state = PAUSED_STATE;
+    pauseStartTimestampUs = esp_timer_get_time();
+    softStopRelay();
+    ESP_LOGW(name, "Gate PAUSED. Remaining time to target: %llu ms", 
+             (targetRunTimeMs * 1000 - (pauseStartTimestampUs - timestampStartUs)) / 1000);
+}
+
+// Public method: resume movement
+void Gate::resume() {
+    if (state != PAUSED_STATE) {
+        ESP_LOGW(name, "Resume requested, but gate is not paused -> ignoring");
+        return;
+    }
+    uint64_t currentTimeUs = esp_timer_get_time();
+    uint64_t elapsedSinceStart = pauseStartTimestampUs - timestampStartUs;
+    targetRunTimeMs = (targetRunTimeMs * 1000 - elapsedSinceStart) / 1000;
+    if (targetRunTimeMs <= 0) {
+        ESP_LOGW(name, "No remaining run time, cannot resume -> switching to idle");
+        stop(false);
+        state = IDLE_PARTIALLY_OPEN;
+        return;
+    }
+    ESP_LOGI(name, "Resuming gate movement. Remaining target run time: %llu ms", targetRunTimeMs);
+    startMovement(wasOpeningBeforePause);
+}
+
+// Public method: cancel movement
+void Gate::cancel() {
+    ESP_LOGI(name, "Cancel requested. Stopping gate immediately");
+    stop(true);
+    state = IDLE_PARTIALLY_OPEN;
+}
+
+
 
 
 
@@ -410,8 +459,16 @@ void Gate::handle() {
             ESP_LOGI(name, "VFD startup delay passed, starting motor");
             startMovement(nextDirection);
         }
-
         break;
+
+    case PAUSED_STATE:
+        // exit paused state after certain timeout
+        if ((esp_timer_get_time() - pauseStartTimestampUs)/1000 > PAUSED_SWITCH_TO_IDLE_TIMEOUT_MS ){
+            ESP_LOGE(name, "exceeded max time in PAUSED_STATE (%d ms) -> switching to IDLE", PAUSED_SWITCH_TO_IDLE_TIMEOUT_MS/1000);
+            state = IDLE_PARTIALLY_OPEN;
+        }
+        break;
+
     case ERROR_STATE:
         ESP_LOGE(name, "currently in ERROR state, TODO how to use / recover from here? ==> switching to IDLE_PARTIALLY_OPEN for now...");
         state = IDLE_PARTIALLY_OPEN;
@@ -421,7 +478,3 @@ void Gate::handle() {
 }
 
 
-
-GateState Gate::getState() const {
-    return state;
-}

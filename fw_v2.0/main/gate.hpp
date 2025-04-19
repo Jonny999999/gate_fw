@@ -30,8 +30,10 @@
 #define DEFAULT_VFD_FREQUENCY 50 // motor speed in Hz
 #define BEEP_AT_LIMIT_SW_CHANGE
 
+#define PAUSED_SWITCH_TO_IDLE_TIMEOUT_MS 30*1000
+
 // Gate state strings for logging
-extern const char *GateState_str [7];
+extern const char *GateState_str [8];
 
 // Gate state definitions.
 enum GateState {
@@ -41,6 +43,7 @@ enum GateState {
     WAITING_FOR_VFD_STARTUP,
     MOVING_OPENING,
     MOVING_CLOSING,
+    PAUSED_STATE,
     ERROR_STATE
 };
 
@@ -70,13 +73,18 @@ public:
     void closeCompletely();
     void updateTargetRunTime(uint32_t ms);
     void stop(bool forceStatePartialOpen = true);
+    void pause();
+    void resume();
+    void cancel();
 
     // The state machine to be called periodically.
     void handle();
 
     // Retrieve the current state.
-    GateState getState() const;
+    GateState getState() const {return state;};
     bool getIsIdling() const {return state == IDLE_FULLY_OPEN || state == IDLE_FULLY_CLOSED || state == IDLE_PARTIALLY_OPEN;};
+    bool getIsMoving() const {return state == MOVING_CLOSING || state == MOVING_OPENING || state == WAITING_FOR_VFD_STARTUP;};
+    bool getIsClosing() const {return state == MOVING_CLOSING;};
 
 
 private:
@@ -116,6 +124,10 @@ private:
     // Variables to track previous state of limit switches (for logging changes)
     bool prevOpenSwitchState;
     bool prevClosedSwitchState;
+
+    // Variables for pause/resume support
+    bool wasOpeningBeforePause = false;
+    uint64_t pauseStartTimestampUs = 0;
 
     // Private helper methods.
     void startRelay();
