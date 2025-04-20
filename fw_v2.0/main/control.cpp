@@ -128,16 +128,17 @@ void controlTask(void *param)
             //--------------------
             // wait for initial user input
         case ControlState::IDLE:
-            //--- button close ---
+            //--- button/remote close ---
             // close gates completely
-            if (buttonClose.risingEdge)
+            if (buttonClose.risingEdge || remoteClose.risingEdge)
             {
-                // TODO: prevent closing start when light barrier obstructed, or is queuing that event intended? e.g. start already while walking through
-                ESP_LOGW(TAG_CTL, "Button close pressed - Closing completely");
+                ESP_LOGW(TAG_CTL, "%sclose Button pressed - Closing completely", 
+                    remoteClose.risingEdge ? "REMOTE-control " : "");
                 timestampLastAction = esp_log_timestamp();
-                config->buzzer->beep(1, 1000, 0);
+                config->buzzer->beep(1, 1000, 50);
                 if (lightBarrierIsObstructed()){
                     // barrier is obstructed -> wait for clear in CLOSING_MOVEMENT_PAUSED state before starting
+                    config->buzzer->beep(4, 50, 50);
                     ESP_LOGE(TAG_CTL, "Close command received but barrier currently obstructed saving close request -> switching to PAUSED");
                     ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
                 } else {
@@ -160,16 +161,6 @@ void controlTask(void *param)
                 countPressed = 0;
                 timestampLastAction = esp_log_timestamp();
                 ctlState = ControlState::WAIT_FOR_INPUT;
-            }
-            //--- remote close ---
-            // close gates completely
-            else if (remoteClose.risingEdge)
-            {
-                ESP_LOGW(TAG_CTL, "REMOTE: Closing completely");
-                config->buzzer->beep(2, 500, 100);
-                config->gateA->closeCompletely();
-                config->gateB->closeCompletely();
-                ctlState = ControlState::MOVING_TO_TARGET;
             }
             //--- remote open ---
             // open gates completely
