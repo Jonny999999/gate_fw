@@ -59,13 +59,14 @@ No functional changes intended beyond fixing the defects listed under 1.1.
       at `CONFIG_FREERTOS_HZ=100`, and a *logging* API) and raw `esp_timer_get_time()`
       with one small helper (`millis()` on top of `esp_timer_get_time()`), consistently
       in ms, with wrap-safe comparisons.
-- [~] **Split `control.cpp`.** Input handling is out (`input.cpp`) and gate sequencing is
-      out (`gate_task.cpp`). Still mixed in: light-barrier timing, fault-LED blinking and
-      buzzer patterns → pull out an `indicator` module (LED + buzzer patterns).
+- [x] **Split `control.cpp`.** Input handling → `input.cpp`, gate sequencing →
+      `gate_task.cpp`, buzzer + status LED → `indicator.cpp`. `control.cpp` is now only the
+      user-facing state machine plus the light-barrier timing.
 - [x] **Own the objects properly.** `vfd1/2`, `gate1West/gate2East` and `controlConfig` are
       locals in `app_main()` kept alive only by `while(1) vTaskDelay(portMAX_DELAY)`.
       Make them file-scope or heap-allocated and drop the keep-alive hack.
-- [ ] **Move the buzzer task into `buzzer_t`** (`createTask()`), as the existing TODO says.
+- [x] **Buzzer task** — `buzzer_t` is gone entirely; the indicator task owns the buzzer and
+      the status LED, addressed by free functions so nothing has to carry a pointer.
 - [x] **Replaced `components/gpio`** into a proper reusable debounce component with unit-testable
       logic (see 1.3), or replace it outright.
 - [ ] **`config.h` split:** GPIO/pin mapping vs. behaviour tuning (timings, thresholds).
@@ -109,6 +110,23 @@ No functional changes intended beyond fixing the defects listed under 1.1.
 ## Phase 2 — UI / operating-concept rework
 
 Depends on Phase 1 (a reliable, deterministic input layer).
+
+### 2.0 Indication (done as part of Phase 1)
+- [x] Buzzer signals are named (`BuzzerSignal::…`) with the timings unchanged.
+- [x] LED is priority-arbitrated: latched fault > status > buzzer mirror. Previously a
+      latched fault was overwritten by the barrier passthrough as soon as control returned
+      to IDLE, so it was effectively never visible.
+- [x] Fault codes blink at a severity-dependent rate (100 / 200 / 500 / 1000 ms).
+- [x] Buzzer mirroring on the red LED turned **off** (`LED_MIRRORS_BUZZER` in
+      `indicator.cpp`): the green panel LED is wired in parallel with the buzzer, so the
+      beeps are already echoed visually in hardware. Flip the define back to 1 if the red
+      LED should join in as well.
+- [ ] **Possible hardware change — individually driven green LED.** The ULN2003 (U1) has a
+      seventh channel left, but it is unused by design: input pin 7 is tied to GND and
+      output pin 10 (O7) reaches no screw terminal. Wiring it up (free GPIO → isolator →
+      U1 pin 7, U1 pin 10 → terminal) would free the green LED from the buzzer and give it
+      its own job — "moving" / "movement pending" / "ready" — while red stays purely fault.
+      Adding it in firmware is then a second `IndicatorChannel` plus a status mapping.
 
 ### 2.1 Reliable button handling
 - [ ] Long-press must be unambiguous: evaluate it on a **clean, per-press** measurement,
