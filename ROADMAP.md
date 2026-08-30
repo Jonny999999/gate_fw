@@ -153,14 +153,26 @@ long-press detection.
 - [x] Gesture: **short press, then press and hold**. Told apart from "hold from the start"
       (= open completely) by `countPressed`, so the familiar full-open gesture is unchanged
       and the gate still starts opening on the very first press.
-- [x] Opens the small gap, holds it for `AUTO_CLOSE_HOLD_OPEN_MS` (20 s), then closes.
+- [x] Opens the **partial** gap — the same ~1.9 s opening a single short press gives, sized
+      for a person to walk through. The press that turns into the long press only selects
+      the mode, so its widening increment is undone. The equivalent for a *full* opening is
+      a separate question, see 2.5.
+- [x] Closes once the light barrier has been **continuously free**
+      for `AUTO_CLOSE_BARRIER_FREE_MS` (20 s) — not simply 20 s after opening. The condition
+      asks the question that actually matters ("is everybody through and nothing coming?"),
+      so walking in and out or taking a while with a trailer postpones the close instead of
+      racing a deadline.
+- [x] Give-up: if the barrier stays obstructed for `AUTO_CLOSE_GIVE_UP_OBSTRUCTED_MS` (20 s)
+      without a break, the pending close is cancelled and the gate stays open. Whoever is
+      there is clearly busy; closing on them later would be worse than not closing.
 - [x] Distinct confirmation: `BuzzerSignal::AUTO_CLOSE_ARMED` is a two-part signal — one
       long tone, then two short ones. Nothing else in the catalogue has that shape, so it
       cannot be confused with a normal opening by ear. Cancelling plays the mirror image.
 - [x] The same accelerating countdown as the barrier resume announces the close
       (`handleCountdownBeeps()`, now shared by both paths).
-- [x] The hold time restarts while the light barrier is interrupted, so the gate never
-      starts closing with somebody in the gap.
+- [x] The wait restarts whenever the light barrier is interrupted, so the gate never starts
+      closing with somebody in the gap — including during the countdown, where the beeping
+      stopping makes the restart audible.
 - [x] Cancellable: **open** cancels and leaves the gate open, **close** closes immediately
       instead of waiting out the rest. A gate error also cancels it — after a failed
       movement the gate should not start moving again unattended.
@@ -173,8 +185,10 @@ long-press detection.
       on every clear, give up after `BARRIER_WAIT_FOR_FREE_TIMEOUT_MS` (8 s) of *continuous*
       obstruction. Both arguments for cancelling instead are already covered: staying in the
       gateway past 8 s cancels it outright, and any button press cancels immediately.
-- [ ] **To decide at the gate:** is 20 s the right hold time, and is the 4 s countdown
-      window enough warning? Both are single constants at the top of `control.cpp`.
+- [ ] **To decide at the gate:** are 20 s of required clear time, 20 s before giving up and
+      a 4 s countdown the right numbers? All three are single constants at the top of
+      `control.cpp`. 20 s of *clear* time may well feel long now that it only starts once
+      the way is actually free — a lower value is the first thing to try.
 - [ ] **Watch for:** the 8 s give-up raises a `BARRIER_BLOCKED_TOO_LONG` fault, so the LED
       blinks slowly afterwards. For an automatic close that may read as "something broke"
       rather than "somebody stayed in the gateway" — see whether it is useful or annoying.
@@ -203,6 +217,44 @@ table; what is still missing is the complete picture.
       split (1.2), so the table has a single file to point at.
 - [ ] Keep it one commit, separate from behaviour changes, so the docs can be redone
       cheaply if the UI shifts again.
+
+### 2.5 Automatic closing for a *full* opening — idea, not implemented
+The implemented gesture opens the **partial** gap, sized for a person to walk through. The
+same "close behind me" behaviour would be useful for a full opening (driving out). The open
+question is only how to start it without colliding with the existing gestures.
+
+Options, evaluated:
+
+1. **Function button as a modifier — recommended.** `CONFIG_FN_BUTTON_GPIO` (GPIO 34) is
+   wired to the control panel and *completely unused* by the firmware. Pressing it before or
+   during a movement would arm the automatic close for that movement, whatever its size.
+   - Unambiguous, essentially impossible to trigger by accident, and works for a partial and
+     a full opening alike — one mechanism instead of a second gesture.
+   - No new timing to learn and no interaction with the long press.
+   - Cost: add the button to the input task (one more `DebouncedButton`), plus an armed
+     indication — `BuzzerSignal::AUTO_CLOSE_ARMED` already exists.
+   - Downside: a second button to reach for, less convenient than a single gesture.
+
+2. **A second, longer hold threshold.** One continuous press: ≥ 800 ms opens completely
+   (long tone), keep holding past ~2.5 s and the automatic close is armed (two-part signal).
+   Release when you hear what you want.
+   - Single button, discoverable by feel, the escalation is audible.
+   - Cost: `DebouncedButton` gains a second threshold (`VERY_LONG_PRESS`).
+   - Downside: absent-minded holding arms it unintentionally — mitigated by the distinctive
+     sound and by any press cancelling.
+
+3. **Long press, then long press.** Rejected. The second press stops the movement, and stop
+   has to act on the *press* event rather than the release, so it cannot wait to find out
+   whether that press turns into a long one. Delaying the stop to make the gesture work
+   would trade safety responsiveness for convenience.
+
+4. **Short, short, long.** Rejected: that already means "wider gap + auto-close", because
+   the additional presses widen the opening.
+
+- [ ] Decide between 1 and 2 (1 recommended), then implement.
+- [ ] Worth questioning first: should a *full* opening auto-close at all? A car is out in
+      seconds, and the light barrier only covers the gateway, not the driveway — so the
+      thing being protected is a bigger area than the sensor actually sees.
 
 ---
 

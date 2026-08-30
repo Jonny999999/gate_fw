@@ -18,12 +18,20 @@
 
 //--- automatic closing ("let me through, then close behind me") ---
 // Armed with: 1 short press (gate starts opening) + 1 long press.
-// How long the gate stays open before it closes again on its own.
-#define AUTO_CLOSE_HOLD_OPEN_MS 20000
-// The last part of that hold time is announced with the same accelerating beep countdown
+//
+// The gate does not simply wait a fixed time and then close. It waits until the light
+// barrier has been CONTINUOUSLY FREE for this long, which is the actual question worth
+// asking: has everybody gone through and is nothing else coming? Walking in and out a few
+// times, or taking a while with a trailer, restarts the wait instead of racing a deadline.
+#define AUTO_CLOSE_BARRIER_FREE_MS 20000
+// The last part of that free period is announced with the same accelerating beep countdown
 // that is used when the gate resumes after the light barrier cleared, so 'the gate is
 // about to move by itself' always sounds the same.
 #define AUTO_CLOSE_COUNTDOWN_MS 4000
+// ... but do not wait forever: if the barrier stays obstructed this long without a break,
+// whoever is there is clearly busy (unloading, parked in the gateway). Give up and leave
+// the gate open rather than closing on them later.
+#define AUTO_CLOSE_GIVE_UP_OBSTRUCTED_MS 20000
 
 #define BARRIER_IS_IGNORED 0 // if 1 light-barrier is always considered free / not-obstructed
 #define BARRIER_DELAY_BEFORE_RESTART_MS 4000 // time after which movement is resumed after barrier is free again
@@ -45,7 +53,7 @@ enum class ControlState
     WAIT_FOR_INPUT,
     MOVING_TO_TARGET,
     CLOSING_MOVEMENT_PAUSED,
-    WAIT_AUTO_CLOSE // gate is open and will close again on its own, see AUTO_CLOSE_HOLD_OPEN_MS
+    WAIT_AUTO_CLOSE // gate is open and closes again once the way stayed clear, see AUTO_CLOSE_BARRIER_FREE_MS
 };
 const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET",
                                  "CLOSING_MOVEMENT_PAUSED", "WAIT_AUTO_CLOSE"};
@@ -64,8 +72,12 @@ static uint32_t timestampLastCountdownBeep;
 static bool barrierIsObstructedWhileIdle = false; // updated in IDLE, shown on the LED
 
 // automatic closing
-static bool autoCloseIsArmed = false;        // set while the current movement ends in WAIT_AUTO_CLOSE
-static uint32_t timestampAutoCloseStart = 0; // when the hold-open time started counting
+static bool autoCloseIsArmed = false; // set while the current movement ends in WAIT_AUTO_CLOSE
+// Light barrier as seen while waiting to close automatically, and when it last changed.
+// One timestamp serves both directions: while free it measures how long the way has been
+// clear, while obstructed it measures how long to keep waiting before giving up.
+static bool autoCloseBarrierIsObstructed = false;
+static uint32_t timestampAutoCloseBarrierChange = 0;
 
 // GPIO assignment passed from main
 ControlConfig *config;
@@ -281,8 +293,8 @@ void controlTask(void *param)
                     countPressed--;
                     gateSendCommand(GateCommandType::SET_TARGET_RUN_TIME, openTargetRunTimeMs(countPressed));
                     autoCloseIsArmed = true;
-                    ESP_LOGW(TAG_CTL, "short press + long press -> opening for %lu ms, closing automatically %d ms later",
-                             openTargetRunTimeMs(countPressed), AUTO_CLOSE_HOLD_OPEN_MS);
+                    ESP_LOGW(TAG_CTL, "short press + long press -> opening for %lu ms, closing once the barrier stayed free for %d ms",
+                             openTargetRunTimeMs(countPressed), AUTO_CLOSE_BARRIER_FREE_MS);
                     indicatorBeep(BuzzerSignal::AUTO_CLOSE_ARMED);
                 }
                 ctlState = ControlState::MOVING_TO_TARGET;
@@ -337,8 +349,10 @@ void controlTask(void *param)
             { // both do not move and are ready to receive new commands
                 if (autoCloseIsArmed)
                 {
-                    ESP_LOGW(TAG_CTL, "Done - gate open, closing automatically in %d ms", AUTO_CLOSE_HOLD_OPEN_MS);
-                    timestampAutoCloseStart = millis();
+                    ESP_LOGW(TAG_CTL, "Done - gate open, closing once the barrier stayed free for %d ms",
+                             AUTO_CLOSE_BARRIER_FREE_MS);
+                    autoCloseBarrierIsObstructed = lightBarrierIsObstructed(input);
+                    timestampAutoCloseBarrierChange = millis();
                     ctlState = ControlState::WAIT_AUTO_CLOSE;
                 }
                 else
@@ -431,7 +445,7 @@ void controlTask(void *param)
             // own once nobody is in the way any more.
         case ControlState::WAIT_AUTO_CLOSE:
         {
-            //--- close button: do not make the user wait out the rest of the hold time ---
+            //--- close button: do not make the user wait for the barrier-free time to pass ---
             if (input.closeButtonPressed || input.remoteClosePressed)
             {
                 ESP_LOGW(TAG_CTL, "Close pressed while waiting to close automatically => closing now");
@@ -450,28 +464,50 @@ void controlTask(void *param)
                 break;
             }
 
-            //--- somebody is still in the gateway -> keep it open and start over ---
-            // The hold time restarts as long as the barrier is interrupted, so the gate
-            // never begins to close while someone is standing in it.
-            if (lightBarrierIsObstructed(input))
+            //--- track the barrier: the wait is about how long the way has been clear ---
+            const bool barrierIsObstructed = lightBarrierIsObstructed(input);
+            if (barrierIsObstructed != autoCloseBarrierIsObstructed)
             {
-                timestampAutoCloseStart = millis();
+                autoCloseBarrierIsObstructed = barrierIsObstructed;
+                timestampAutoCloseBarrierChange = millis();
+                ESP_LOGI(TAG_CTL, "Waiting to close automatically - barrier is now %s",
+                         barrierIsObstructed ? "obstructed" : "free");
+            }
+            const uint32_t msSinceBarrierChange = millis() - timestampAutoCloseBarrierChange;
+
+            //--- somebody is in the gateway ---
+            if (barrierIsObstructed)
+            {
+                // The clear-time requirement starts over once they are through, so walking
+                // in and out, or taking a while with a trailer, simply postpones the close
+                // instead of racing a deadline.
+                // But do not hold the gate open indefinitely for someone who stays put.
+                if (msSinceBarrierChange > AUTO_CLOSE_GIVE_UP_OBSTRUCTED_MS)
+                {
+                    ESP_LOGW(TAG_CTL, "Barrier obstructed for more than %d ms => giving up, gate stays open",
+                             AUTO_CLOSE_GIVE_UP_OBSTRUCTED_MS);
+                    autoCloseIsArmed = false;
+                    indicatorBeep(BuzzerSignal::AUTO_CLOSE_CANCELLED);
+                    ctlState = ControlState::IDLE;
+                }
                 break;
             }
 
-            const int32_t timeRemaining =
-                (int32_t)AUTO_CLOSE_HOLD_OPEN_MS - (int32_t)(millis() - timestampAutoCloseStart);
+            //--- the way is clear, count how long it stays that way ---
+            const int32_t timeRemaining = (int32_t)AUTO_CLOSE_BARRIER_FREE_MS - (int32_t)msSinceBarrierChange;
 
             //--- announce the close with the usual countdown ---
             // Same accelerating beeps as when the gate resumes after the barrier cleared,
             // so "it is about to move by itself" always sounds the same.
+            // Interrupting the barrier during the countdown restarts the whole wait, which
+            // is audible: the beeping simply stops.
             if (timeRemaining <= (int32_t)AUTO_CLOSE_COUNTDOWN_MS)
                 handleCountdownBeeps(timeRemaining, AUTO_CLOSE_COUNTDOWN_MS);
 
-            //--- hold time is over -> close ---
+            //--- clear for long enough -> close ---
             if (timeRemaining <= 0)
             {
-                ESP_LOGW(TAG_CTL, "Hold-open time over -> closing automatically");
+                ESP_LOGW(TAG_CTL, "Barrier free for %d ms -> closing automatically", AUTO_CLOSE_BARRIER_FREE_MS);
                 autoCloseIsArmed = false;
                 ctlState = startClosingGates(input, false);
             }

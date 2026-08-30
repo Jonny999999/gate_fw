@@ -93,7 +93,7 @@ one of them, so the gate can be operated without looking at it.
 | **Open button, short press** | opens a small gap (~1.9 s of travel) | one short beep |
 | **Open button, press again** (while it is still waiting) | widens the gap by ~0.7 s per press | one very short beep per press |
 | **Open button, press and keep holding** | opens completely | one long tone |
-| **Open button: short press, then press and hold** | opens the small gap and **closes again by itself** after 20 s | one long tone, then two short ones |
+| **Open button: short press, then press and hold** | opens the small gap and **closes again by itself** once the way is clear | one long tone, then two short ones |
 | **Close button** or **remote B** | closes completely | one long tone |
 | **Remote A** | opens completely | one long tone |
 | **Any button while a gate moves** | stops the movement | one medium tone |
@@ -102,15 +102,23 @@ The gate distinguishes "hold from the start" (open completely) from "short press
 then hold" (open a gap and close behind me) - so the familiar full-open gesture is unchanged.
 
 ### Let me through, then close behind me
-Short press, then press and hold. The gate opens the small gap, waits 20 seconds and closes
-again on its own.
+Short press, then press and hold. The gate opens the small gap and closes again on its own
+**once the light barrier has been continuously free for 20 seconds** - not simply 20 seconds
+after opening.
 
-- An accelerating beep countdown announces the closing, the same one the gate uses whenever
-  it starts moving by itself.
-- While the light barrier is interrupted the 20 seconds start over, so it never begins to
-  close while somebody is still standing in the gap.
-- Pressing **open** cancels it and leaves the gate open (two short beeps, then a long one).
-  Pressing **close** closes immediately instead of waiting.
+That distinction is the point: the gate waits until everybody is actually through and
+nothing else is coming. Walking in and out, or taking a while with a trailer, restarts the
+20 seconds instead of racing a deadline.
+
+- An accelerating beep countdown announces the closing over the last 4 seconds, the same one
+  the gate uses whenever it starts moving by itself. Interrupting the light barrier during
+  the countdown restarts the wait - audibly, because the beeping stops.
+- If the light barrier stays interrupted for 20 seconds without a break, the gate gives up
+  and stays open (two short beeps, then a long one). Whoever is there is clearly busy.
+- Pressing **open** cancels it and leaves the gate open. Pressing **close** closes
+  immediately instead of waiting.
+- If the barrier is interrupted while it is already closing, it behaves like any other
+  close: it pauses, and resumes 4 seconds after the way is clear again.
 - The fault LED gives a short flash once per second while an automatic close is pending.
 
 ### Fault LED
