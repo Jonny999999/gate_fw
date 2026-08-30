@@ -85,19 +85,41 @@ idf.py flash
 
 # Usage
 
-All gestures are on the **open button** unless noted otherwise. The buzzer confirms every
-one of them, so the gate can be operated without looking at it.
+## Quick guide — print this and put it next to the button
 
-| Gesture | Result | Sound |
-|---|---|---|
-| **Open button, short press** | opens a small gap (~1.9 s of travel) | one short beep |
-| **Open button, press again** (while it is still waiting) | widens the gap by ~0.7 s per press | one very short beep per press |
-| **Open button, hold ~0.8 s** | opens completely, stays open | one long tone |
-| **Open button, keep holding ~2.5 s** | opens completely and **closes again by itself** | long tone, then long-short-short |
-| **Open button: short press, then press and hold** | opens the small gap and **closes again by itself** | long tone, then long-short-short |
-| **Close button** or **remote B** | closes completely | one long tone |
-| **Remote A** | opens completely | one long tone |
-| **Any button while a gate moves** | stops the movement | one medium tone |
+### Open button
+
+| What you do | What the gate does |
+|---|---|
+| **Press briefly** | opens a small gap, enough to walk through |
+| **Press briefly again**, right away | makes the gap wider — once for every extra press |
+| **Hold** until you hear a long beep | opens fully and stays open |
+| **Keep holding** until two short beeps follow | opens fully, then closes again by itself |
+| **Press briefly, then press and hold** | opens a small gap, then closes again by itself |
+
+The gate starts moving the moment you press. Just let go when you hear what you want.
+
+### Close button
+Press once — the gate closes.
+
+### Remote control
+**A** opens fully · **B** closes.
+
+### Stop / cancel
+Press **any** button while the gate is moving, or while it is waiting to close by itself.
+
+### When the gate closes by itself
+It waits until nobody has crossed the light barrier for a while —
+about **10 seconds** after a small gap, about **2 minutes** after opening fully.
+Walking through again restarts the wait, so take your time.
+The beeps get faster just before it starts moving.
+The red lamp flashes briefly once a second for as long as a self-close is waiting.
+
+<br>
+
+---
+
+## Details
 
 ### The open button, held down
 The gate starts opening the moment you press, and holding on escalates. **Release when you
@@ -144,13 +166,11 @@ must not close in front of you meanwhile.
 - If the barrier is interrupted while it is already closing, it behaves like any other
   close: it pauses, and resumes 4 seconds after the way is clear again.
 
-### Fault LED
-The red LED keeps showing the last problem until the next movement is started. The blink
-rate says how serious it is - the faster, the more attention it needs:
-
+### Red LED
 Two shapes, told apart at a glance:
 
-- **Even blinking** - something went wrong. The faster, the more serious.
+- **Even blinking** - something went wrong. The faster, the more serious. The LED keeps
+  showing the last problem until the next movement is started.
 - **Short flash with a gap** - nothing is wrong, but the gate will move on its own in a
   while. Any button press calls it off.
 
