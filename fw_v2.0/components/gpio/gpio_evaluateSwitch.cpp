@@ -76,6 +76,8 @@ void gpio_evaluatedSwitch::handle(){  //Statemachine for debouncing and edge det
                         state = true;
                         risingEdge = true;
                         msReleased = timestampHigh - timestampLow; //calculate duration the button was released 
+                        //start a fresh press duration measurement (see non-inverted branch)
+                        msPressed = esp_log_timestamp() - timestampHigh;
                     }
                 }else{
                     p_state = switchState::FALSE;
@@ -97,9 +99,9 @@ void gpio_evaluatedSwitch::handle(){  //Statemachine for debouncing and edge det
                 if (gpio_get_level(gpio_num) == 0){ //pin still low (off)
                     if (esp_log_timestamp() - timestampLow > minOffMs){ //pin in same state long enough
                         p_state = switchState::FALSE;
-                        msPressed = timestampLow - timestampHigh; //calculate duration the button was pressed
                         state=false;
                         fallingEdge=true;
+                        //note: msPressed intentionally not recalculated here (see non-inverted branch)
                     }
                 }else{
                     p_state = switchState::TRUE;
@@ -134,6 +136,10 @@ void gpio_evaluatedSwitch::handle(){  //Statemachine for debouncing and edge det
                         state = true;
                         risingEdge = true;
                         msReleased = timestampLow - timestampHigh; //calculate duration the button was released
+                        //start a fresh press duration measurement.
+                        //without this msPressed would still hold the value of the PREVIOUS press
+                        //while risingEdge is evaluated -> a short press could be read as a long one
+                        msPressed = esp_log_timestamp() - timestampLow;
                     }
                 }else{
                     p_state = switchState::FALSE;
@@ -155,9 +161,12 @@ void gpio_evaluatedSwitch::handle(){  //Statemachine for debouncing and edge det
                 if (gpio_get_level(gpio_num) == 1){ //pin still high (off)
                     if (esp_log_timestamp() - timestampHigh > minOffMs){ //pin in same state long enough
                         p_state = switchState::FALSE;
-                        msPressed = timestampHigh - timestampLow; //calculate duration the button was pressed
                         state=false;
                         fallingEdge=true;
+                        //note: msPressed is intentionally NOT recalculated from timestampHigh here.
+                        //timestampHigh is when the release was NOTICED, which can be much later than
+                        //the actual release when handle() was delayed (e.g. blocking modbus command).
+                        //The value measured while the input was last seen pressed is the safer one.
                     }
                 }else{
                     p_state = switchState::TRUE;

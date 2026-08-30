@@ -34,11 +34,18 @@ class gpio_evaluatedSwitch {
                 );
 
         //--- output ---         TODO make readonly? (e.g. public section: const int& x = m_x;)
-        bool state = false;
-        bool risingEdge = false;
-        bool fallingEdge = false;
+        bool state = false;       // debounced state: true = pressed
+        bool risingEdge = false;  // set for one handle() call when a press was confirmed
+        bool fallingEdge = false; // set for one handle() call when a release was confirmed
+
+        // Duration the button is / was pressed, in milliseconds.
+        // Only ever advanced while the raw input is actually still reading 'pressed', so a
+        // delayed handle() call can never inflate it (it may under-report by at most one
+        // handle() interval, which fails safe towards 'short press').
+        // Reset at every confirmed press, so it never carries a value over from the
+        // previous press.
         uint32_t msPressed = 0;
-        uint32_t msReleased = 0;
+        uint32_t msReleased = 0;  // duration the button is / was released, in milliseconds
 
         //--- functions ---
         void handle();  //Statemachine for debouncing and edge detection
