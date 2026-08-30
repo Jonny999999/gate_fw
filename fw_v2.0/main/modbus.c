@@ -74,11 +74,14 @@ uint16_t modbus_crc16(const uint8_t *data, uint8_t length)
 
 
 // Function to send a Modbus RTU frame with retry logic
-// returns 0: success, -1: uart sending failed, -2: incorrect response from vfd
+// returns ESP_OK on success, otherwise the error of the last attempt:
+//   ESP_FAIL                 - sending via UART failed
+//   ESP_ERR_INVALID_SIZE     - response was incomplete / missing
+//   ESP_ERR_INVALID_RESPONSE - the vfd did not echo the request back unchanged
 esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_t reg_addr, uint16_t value)
 {
     int len;
-    esp_err_t err = 0;
+    esp_err_t err = ESP_OK;
     ESP_LOGD(TAG, "send_modbus_command: addr %d, func: %d, regAddr: %d, value: %d", slave_addr, function_code, reg_addr, value);
 
 
@@ -135,33 +138,44 @@ esp_err_t send_modbus_command(uint8_t slave_addr, uint8_t function_code, uint16_
         ESP_LOGD(TAG, "Attempt %d of %d: Successfully sent %d bytes via UART", attemptNum, SEND_COMMAND_MAX_RETRIES +1, len);
 
         // Receive response
-        uint8_t response[8];
+        uint8_t response[8] = {0};
         len = uart_read_bytes(UART_NUM, response, sizeof(response), pdMS_TO_TICKS(RECEIVE_TIMEOUT_MS));
 
         // log response
         if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG)
         {
             printf("[%s] Received %d bytes after WRITE - hex:", TAG, len);
-            for (int i = 0; i < len; i++)
+            for (int i = 0; i < (len > 0 ? len : 0); i++)
             {
                 printf("%02X ", response[i]);
             }
             printf("\n");
         }
 
-    // verify that response is correct
-    // the vfd echos the same request back with 2 additional bytes
-    // e.g. request: "01 06 00 02 00 64 29 E1 "   response: "01 06 00 02 00 64 29 E1 00"
-        if (memcmp(frame, response, 8) == 0)
+        // verify that the response is correct
+        // 1. the full echo must have been received.
+        //    Without this check memcmp() below compared the request against whatever
+        //    happened to be on the stack for the bytes that were never received.
+        if (len != (int)sizeof(response))
+        {
+            ESP_LOGE(TAG, "Attempt %d of %d: Expected %d bytes in response but received %d",
+                     attemptNum, SEND_COMMAND_MAX_RETRIES + 1, (int)sizeof(response), len);
+            err = ESP_ERR_INVALID_SIZE;
+            continue; // next try
+        }
+
+        // 2. the vfd echos the same request back with 2 additional bytes
+        //    e.g. request: "01 06 00 02 00 64 29 E1 "   response: "01 06 00 02 00 64 29 E1 00"
+        if (memcmp(frame, response, sizeof(response)) == 0)
         {
             ESP_LOGD(TAG, "Attempt %d of %d: Response matches the request. Command successful.", attemptNum, SEND_COMMAND_MAX_RETRIES + 1);
-            return 0;
+            return ESP_OK;
         }
         else
         {
-        ESP_LOGE(TAG, "Attempt %d of %d: Response does not match the request!", attemptNum, SEND_COMMAND_MAX_RETRIES + 1);
-        err = ESP_ERR_INVALID_RESPONSE;
-        continue; // next try
+            ESP_LOGE(TAG, "Attempt %d of %d: Response does not match the request!", attemptNum, SEND_COMMAND_MAX_RETRIES + 1);
+            err = ESP_ERR_INVALID_RESPONSE;
+            continue; // next try
         }
     }
 
@@ -217,7 +231,7 @@ esp_err_t read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *
     ESP_LOGD(TAG, "Sent Modbus read request (%d bytes)", len);
 
     // receive response
-    uint8_t response[7];
+    uint8_t response[7] = {0};
     ESP_LOGV(TAG, "reading response...");
     len = uart_read_bytes(UART_NUM, response, sizeof(response), pdMS_TO_TICKS(100));
 
@@ -243,7 +257,7 @@ esp_err_t read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *
     if (modbus_crc16(response, len - 2) != response_crc)
     {
         ESP_LOGE(TAG, "CRC error in Modbus response");
-        return -2; // CRC error
+        return ESP_ERR_INVALID_CRC;
     }
 
     // 3. function code must be correct ("Read Holding Registers (0x03)")
@@ -252,6 +266,7 @@ esp_err_t read_modbus_register(uint8_t slave_addr, uint16_t reg_addr, uint16_t *
         ESP_LOGE(TAG, "Invalid function code in response: 0x%02X", response[1]);
         return ESP_ERR_INVALID_RESPONSE;
     }
+
 
     // extract the register value
     *value = (response[3] << 8) | response[4];
