@@ -108,22 +108,26 @@ private:
     const float defaultFrequency = DEFAULT_VFD_FREQUENCY;  // Frequency (Hz) to use when running
     const uint32_t runDurationMs;  // Full run duration (0% to 100%) in milliseconds
 
-    uint64_t timestampStartUs; // Timestamp (in microseconds) when movement started
-    uint64_t targetRunTimeMs;  // Desired movement duration (in microseconds) for partial moves
+    // note: all members below are given a defined default here.
+    // Several of them used to be read before ever being written (e.g. the relay startup
+    // check and the limit-switch change detection ran on garbage during the first cycles
+    // after boot).
+    uint64_t timestampStartUs = 0; // Timestamp (in microseconds) when movement started
+    uint64_t targetRunTimeMs = 0;  // Desired movement duration (in MILLIseconds) for partial moves
 
-    GateState state;               // Current state of the gate
-    bool nextDirection;             // Store desired gate direction while waiting for vfd startup
-    uint64_t lastActivityTimestampUs; // For relay timeout control
+    GateState state;               // Current state of the gate (set in the constructor)
+    bool nextDirection = false;    // Store desired gate direction while waiting for vfd startup
+    uint64_t lastActivityTimestampUs = 0; // For relay timeout control
     bool relayTimeoutActive;       // Flag indicating a soft-stop request for the relay
     bool relayOn;                  // Whether the relay is currently on
-    uint64_t timestampRelayTurnedOnUs;
+    uint64_t timestampRelayTurnedOnUs = 0; // Timestamp the relay was last switched on
 
     float positionPercent;         // Current estimated position (0% = closed, 100% = open)
-    uint64_t lastPositionUpdateTimestampUs; // Timestamp of last position update
+    uint64_t lastPositionUpdateTimestampUs = 0; // Timestamp of last position update
 
     // Variables to track previous state of limit switches (for logging changes)
-    bool prevOpenSwitchState;
-    bool prevClosedSwitchState;
+    bool prevOpenSwitchState = false;
+    bool prevClosedSwitchState = false;
 
     // Variables for pause/resume support
     bool wasOpeningBeforePause = false;

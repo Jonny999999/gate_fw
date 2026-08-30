@@ -132,14 +132,15 @@ void Gate::startMovement(bool opening) {
     ESP_LOGI(name, "Starting movement dir=%s...", opening ? "OPENING" : "CLOSING");
     // when relay is off we need to wait for vfd startup first...
     nextDirection = opening; // store target direction (used in case of waiting for VFD or when pause/resuming)
-    if (!relayOn || ((esp_timer_get_time() - timestampRelayTurnedOnUs) < DELAY_VFD_STARTUP)) {
+    // wait for the VFD to finish booting when the relay is off, or was switched on only just now
+    // (note: timestampRelayTurnedOnUs is in microseconds, DELAY_VFD_STARTUP in milliseconds)
+    if (!relayOn || ((esp_timer_get_time() - timestampRelayTurnedOnUs) < (uint64_t)DELAY_VFD_STARTUP * 1000)) {
         startRelay();
         ESP_LOGI(name, "Waiting %d ms for VFD to boot up in state WAITING_FOR_VFD_STARTUP first...", DELAY_VFD_STARTUP);
         state = WAITING_FOR_VFD_STARTUP;
         return;
     }
 
-    lastPositionUpdateTimestampUs = timestampStartUs;
     vfd->setFrequency(kDefaultVfdFrequency);
     esp_err_t err = vfd->start(opening); // start motor in desired direction
     #ifndef IGNORE_VFD_ERROR
@@ -151,7 +152,14 @@ void Gate::startMovement(bool opening) {
         return;
     }
     #endif
+    // Take both timestamps AFTER the (blocking) modbus commands returned, so they refer to
+    // the moment the motor actually starts turning.
+    // Note: lastPositionUpdateTimestampUs must be seeded here. It used to be assigned from
+    // timestampStartUs BEFORE that was refreshed, i.e. from the previous movement, so the
+    // first updatePosition() integrated the whole idle time in between and slammed the
+    // position estimate to 0% / 100%.
     timestampStartUs = esp_timer_get_time();
+    lastPositionUpdateTimestampUs = timestampStartUs;
 
     if (opening) {
         state = MOVING_OPENING;
@@ -321,8 +329,14 @@ void Gate::cancel() {
 
 
 void Gate::handle() {
-    // debug logging
-    ESP_LOGV(name, "handle() - state=%s,  pos=%.2f, limitOpen=%d, limitClosed=%d", GateState_str[(int)state], positionPercent, checkLimitSwitchOpenActive(), checkLimitSwitchClosedActive());
+    // Read both limit switches into locals first.
+    // checkLimitSwitch*Active() have side effects (they log changes and update
+    // prevOpen/prevClosedSwitchState), so they must not be called from inside a log macro:
+    // ESP_LOGV is compiled out at the configured log level, which would silently change
+    // behaviour depending on the build configuration.
+    const bool limitSwitchOpenActive = checkLimitSwitchOpenActive();
+    const bool limitSwitchClosedActive = checkLimitSwitchClosedActive();
+    ESP_LOGV(name, "handle() - state=%s,  pos=%.2f, limitOpen=%d, limitClosed=%d", GateState_str[(int)state], positionPercent, limitSwitchOpenActive, limitSwitchClosedActive);
 
     uint64_t currentTimeUs = esp_timer_get_time();
 
