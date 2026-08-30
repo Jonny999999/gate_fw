@@ -119,6 +119,10 @@ Depends on Phase 1 (a reliable, deterministic input layer).
       latched fault was overwritten by the barrier passthrough as soon as control returned
       to IDLE, so it was effectively never visible.
 - [x] Fault codes blink at a severity-dependent rate (100 / 200 / 500 / 1000 ms).
+- [x] **Fault and "pending" are told apart by shape, not speed.** Even blinking means
+      something went wrong; a short flash with a long gap means a movement is queued and any
+      button cancels it. `WAITING_FOR_BARRIER` used to blink evenly and was indistinguishable
+      from a fault code at a glance.
 - [x] Buzzer mirroring on the red LED turned **off** (`LED_MIRRORS_BUZZER` in
       `indicator.cpp`): the green panel LED is wired in parallel with the buzzer, so the
       beeps are already echoed visually in hardware. Flip the define back to 1 if the red
@@ -155,10 +159,18 @@ long-press detection.
       and the gate still starts opening on the very first press.
 - [x] Opens the **partial** gap — the same ~1.9 s opening a single short press gives, sized
       for a person to walk through. The press that turns into the long press only selects
-      the mode, so its widening increment is undone. The equivalent for a *full* opening is
-      a separate question, see 2.5.
-- [x] Closes once the light barrier has been **continuously free**
-      for `AUTO_CLOSE_BARRIER_FREE_MS` (20 s) — not simply 20 s after opening. The condition
+      the mode, so its widening increment is undone.
+- [x] **Full opening variant** (see 2.5): keep the *first* press held past a second
+      threshold (`OPEN_BUTTON_VERY_LONG_PRESS_MS`, 2.5 s). Nothing is committed until the
+      button is released, so each stage can announce itself and the user releases when they
+      hear what they want: quick = small gap, ~0.8 s = open completely, ~2.5 s = open
+      completely and close again.
+- [x] Required clear time depends on the opening size: 10 s for the partial gap, **120 s**
+      for a full opening. Opening the gate, walking to the car and driving out can leave the
+      barrier untouched for a minute or more; a short clear time would close it in front of
+      the car.
+- [x] Closes once the light barrier has been **continuously free** for the required time —
+      not simply a fixed time after opening. The condition
       asks the question that actually matters ("is everybody through and nothing coming?"),
       so walking in and out or taking a while with a trailer postpones the close instead of
       racing a deadline.
@@ -218,43 +230,37 @@ table; what is still missing is the complete picture.
 - [ ] Keep it one commit, separate from behaviour changes, so the docs can be redone
       cheaply if the UI shifts again.
 
-### 2.5 Automatic closing for a *full* opening — idea, not implemented
-The implemented gesture opens the **partial** gap, sized for a person to walk through. The
-same "close behind me" behaviour would be useful for a full opening (driving out). The open
-question is only how to start it without colliding with the existing gestures.
+### 2.5 Automatic closing for a *full* opening — implemented
+Chosen: **option 2, a second hold threshold** on the same press. The escalation is
+self-announcing, so it needs no extra button and nothing is committed until release:
 
-Options, evaluated:
+| Hold the first press | Result | Announced by |
+|---|---|---|
+| release quickly | small gap | one short beep |
+| ≥ `OPEN_BUTTON_LONG_PRESS_MS` (0.8 s) | open completely, stay open | one long tone |
+| ≥ `OPEN_BUTTON_VERY_LONG_PRESS_MS` (2.5 s) | open completely **and close again** | long tone, then two short |
 
-1. **Function button as a modifier — recommended.** `CONFIG_FN_BUTTON_GPIO` (GPIO 34) is
-   wired to the control panel and *completely unused* by the firmware. Pressing it before or
-   during a movement would arm the automatic close for that movement, whatever its size.
-   - Unambiguous, essentially impossible to trigger by accident, and works for a partial and
-     a full opening alike — one mechanism instead of a second gesture.
-   - No new timing to learn and no interaction with the long press.
-   - Cost: add the button to the input task (one more `DebouncedButton`), plus an armed
-     indication — `BuzzerSignal::AUTO_CLOSE_ARMED` already exists.
-   - Downside: a second button to reach for, less convenient than a single gesture.
+- [x] `DebouncedButton` gained a second threshold; both fire for the same press, in order.
+      Covered by three host tests (escalation order, release in between, re-arming).
+- [x] `control.cpp` stays in `WAIT_FOR_INPUT` while the button is still held after the first
+      threshold, and commits on release. The input timeout is already suspended while held.
+- [x] Accidental triggering is implausible: 2.5 s is far beyond any absent-minded hold, the
+      first meaning is confirmed audibly at 0.8 s, and the two-part signal makes the
+      escalation obvious. Any button press cancels afterwards.
 
-2. **A second, longer hold threshold.** One continuous press: ≥ 800 ms opens completely
-   (long tone), keep holding past ~2.5 s and the automatic close is armed (two-part signal).
-   Release when you hear what you want.
-   - Single button, discoverable by feel, the escalation is audible.
-   - Cost: `DebouncedButton` gains a second threshold (`VERY_LONG_PRESS`).
-   - Downside: absent-minded holding arms it unintentionally — mitigated by the distinctive
-     sound and by any press cancelling.
+Rejected alternatives, kept for the record:
+- **Function button as a modifier** (`CONFIG_FN_BUTTON_GPIO`, GPIO 34, still unused). Would
+  also work and is impossible to trigger accidentally, but costs a second button to reach
+  for. Still the natural choice if the button ever gets another job that needs a modifier.
+- **Long press, then long press.** The second press stops the movement, and stop has to act
+  on the press event rather than the release, so it cannot wait to see whether the press
+  turns long. Not worth trading stop responsiveness for.
+- **Short, short, long.** Already means "wider gap + auto-close".
 
-3. **Long press, then long press.** Rejected. The second press stops the movement, and stop
-   has to act on the *press* event rather than the release, so it cannot wait to find out
-   whether that press turns into a long one. Delaying the stop to make the gesture work
-   would trade safety responsiveness for convenience.
-
-4. **Short, short, long.** Rejected: that already means "wider gap + auto-close", because
-   the additional presses widen the opening.
-
-- [ ] Decide between 1 and 2 (1 recommended), then implement.
-- [ ] Worth questioning first: should a *full* opening auto-close at all? A car is out in
-      seconds, and the light barrier only covers the gateway, not the driveway — so the
-      thing being protected is a bigger area than the sensor actually sees.
+- [ ] **Still worth questioning at the gate:** should a full opening auto-close at all? A car
+      is out in seconds, and the light barrier only covers the gateway, not the driveway — so
+      the area worth protecting is larger than what the sensor sees. The 120 s clear time is
+      the mitigation; see whether it feels right.
 
 ---
 

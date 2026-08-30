@@ -45,6 +45,8 @@ static void beginTest(const char *name)
 static const uint32_t kSampleIntervalMs = 5;
 // Long press threshold used by the open button
 static const uint32_t kLongPressMs = 800;
+// Second, longer threshold: keep holding to escalate to "and close again afterwards"
+static const uint32_t kVeryLongPressMs = 2500;
 // Debounce time
 static const uint32_t kMinStableMs = 40;
 
@@ -283,6 +285,73 @@ static void test_longPressCanBeDisabled()
     CHECK(countEvents(events, ButtonEvent::RELEASED) == 1);
 }
 
+// 11. Holding past the second threshold reports BOTH events, in order, for the same press.
+//     The user hears the first meaning confirmed and can keep holding to escalate.
+static void test_veryLongPressFollowsLongPress()
+{
+    beginTest("holding past the second threshold reports LONG_PRESS then VERY_LONG_PRESS");
+    uint32_t now = 1000;
+    DebouncedButton button(kMinStableMs, kLongPressMs, kVeryLongPressMs);
+    std::vector<ButtonEvent> events;
+
+    feed(button, true, 3000, now, events);
+
+    CHECK(countEvents(events, ButtonEvent::LONG_PRESS) == 1);
+    CHECK(countEvents(events, ButtonEvent::VERY_LONG_PRESS) == 1);
+    // order matters: the first meaning must be announced before the second
+    bool seenLong = false;
+    bool orderIsCorrect = false;
+    for (ButtonEvent event : events)
+    {
+        if (event == ButtonEvent::LONG_PRESS) seenLong = true;
+        if (event == ButtonEvent::VERY_LONG_PRESS) orderIsCorrect = seenLong;
+    }
+    CHECK(orderIsCorrect);
+}
+
+// 12. Releasing between the two thresholds must give the long press only - that is what
+//     makes "release when you hear what you want" work.
+static void test_veryLongPressNotReachedOnShorterHold()
+{
+    beginTest("releasing between the thresholds reports only LONG_PRESS");
+    uint32_t now = 1000;
+    DebouncedButton button(kMinStableMs, kLongPressMs, kVeryLongPressMs);
+    std::vector<ButtonEvent> events;
+
+    feed(button, true, 1500, now, events); // past 800 ms, well short of 2500 ms
+    feed(button, false, 300, now, events);
+
+    CHECK(countEvents(events, ButtonEvent::LONG_PRESS) == 1);
+    CHECK(countEvents(events, ButtonEvent::VERY_LONG_PRESS) == 0);
+}
+
+// 13. Both thresholds must re-arm for every new press, so a previous long hold cannot
+//     make the next press escalate on its own.
+static void test_thresholdsResetForEveryPress()
+{
+    beginTest("both thresholds re-arm for every press");
+    uint32_t now = 1000;
+    DebouncedButton button(kMinStableMs, kLongPressMs, kVeryLongPressMs);
+
+    std::vector<ButtonEvent> firstPress;
+    feed(button, true, 3000, now, firstPress);
+    feed(button, false, 300, now, firstPress);
+    CHECK(countEvents(firstPress, ButtonEvent::VERY_LONG_PRESS) == 1);
+
+    // a short press right after must produce neither threshold
+    std::vector<ButtonEvent> secondPress;
+    feed(button, true, 150, now, secondPress);
+    feed(button, false, 300, now, secondPress);
+    CHECK(countEvents(secondPress, ButtonEvent::LONG_PRESS) == 0);
+    CHECK(countEvents(secondPress, ButtonEvent::VERY_LONG_PRESS) == 0);
+
+    // and a full hold after that must produce both again
+    std::vector<ButtonEvent> thirdPress;
+    feed(button, true, 3000, now, thirdPress);
+    CHECK(countEvents(thirdPress, ButtonEvent::LONG_PRESS) == 1);
+    CHECK(countEvents(thirdPress, ButtonEvent::VERY_LONG_PRESS) == 1);
+}
+
 //===============================
 //============ main =============
 //===============================
@@ -300,6 +369,9 @@ int main()
     test_bouncingReleaseDoesNotStretchPressDuration();
     test_measuredDurationMatchesRealPress();
     test_longPressCanBeDisabled();
+    test_veryLongPressFollowsLongPress();
+    test_veryLongPressNotReachedOnShorterHold();
+    test_thresholdsResetForEveryPress();
 
     printf("==================================\n");
     if (checksFailed == 0)

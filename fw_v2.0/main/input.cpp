@@ -30,6 +30,12 @@ extern "C" {
 // hold costs nothing and separates the gestures more clearly.
 #define OPEN_BUTTON_LONG_PRESS_MS 800
 
+// Second threshold on the same press: keep holding past this and the gate will also close
+// again by itself afterwards. Deliberately far beyond any accidental hold - nobody rests on
+// the button for two and a half seconds - and the user hears the first meaning confirmed at
+// 800 ms, so holding on is a conscious decision.
+#define OPEN_BUTTON_VERY_LONG_PRESS_MS 2500
+
 // The light barrier is treated asymmetrically on purpose:
 //  - 'obstructed' is accepted immediately, so nothing is ever slowed down by debouncing
 //  - 'free' needs a stable reading, so a flickering sensor cannot release the gate early
@@ -133,7 +139,7 @@ static void inputTask(void *param)
 {
     // All buttons are wired as switch-to-GND behind an optocoupler -> pressed reads LOW.
     // Only the open button has a long press; for the others it would just be noise.
-    DebouncedButton openButton(BUTTON_DEBOUNCE_MS, OPEN_BUTTON_LONG_PRESS_MS);
+    DebouncedButton openButton(BUTTON_DEBOUNCE_MS, OPEN_BUTTON_LONG_PRESS_MS, OPEN_BUTTON_VERY_LONG_PRESS_MS);
     DebouncedButton closeButton(BUTTON_DEBOUNCE_MS, 0);
     DebouncedButton remoteOpen(BUTTON_DEBOUNCE_MS, 0);
     DebouncedButton remoteClose(BUTTON_DEBOUNCE_MS, 0);
@@ -218,8 +224,9 @@ InputState inputPoll()
         switch (message.source)
         {
         case InputSource::OPEN_BUTTON:
-            if (message.event == ButtonEvent::PRESSED)    state.openButtonPressed = true;
-            if (message.event == ButtonEvent::LONG_PRESS) state.openButtonLongPress = true;
+            if (message.event == ButtonEvent::PRESSED)         state.openButtonPressed = true;
+            if (message.event == ButtonEvent::LONG_PRESS)      state.openButtonLongPress = true;
+            if (message.event == ButtonEvent::VERY_LONG_PRESS) state.openButtonVeryLongPress = true;
             break;
         case InputSource::CLOSE_BUTTON:
             if (message.event == ButtonEvent::PRESSED)    state.closeButtonPressed = true;

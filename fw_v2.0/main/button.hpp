@@ -20,9 +20,10 @@
 enum class ButtonEvent
 {
     NONE = 0,
-    PRESSED,     // press confirmed (raw input stable for minStableMs)
-    LONG_PRESS,  // still held longPressMs after the press started - reported once per press
-    RELEASED     // release confirmed (raw input stable for minStableMs)
+    PRESSED,         // press confirmed (raw input stable for minStableMs)
+    LONG_PRESS,      // still held longPressMs after the press started - once per press
+    VERY_LONG_PRESS, // still held veryLongPressMs after the press started - once per press
+    RELEASED         // release confirmed (raw input stable for minStableMs)
 };
 
 const char *buttonEventToString(ButtonEvent event);
@@ -30,9 +31,13 @@ const char *buttonEventToString(ButtonEvent event);
 class DebouncedButton
 {
 public:
-    // minStableMs:  how long the raw input must stay unchanged before a change is accepted
-    // longPressMs:  hold time after which LONG_PRESS is reported (0 disables it)
-    explicit DebouncedButton(uint32_t minStableMs = 40, uint32_t longPressMs = 0);
+    // minStableMs:      how long the raw input must stay unchanged before a change is accepted
+    // longPressMs:      hold time after which LONG_PRESS is reported (0 disables it)
+    // veryLongPressMs:  hold time after which VERY_LONG_PRESS is reported (0 disables it).
+    //                   Both are reported for the same press, in order, so the user can be
+    //                   told what will happen and keep holding to escalate.
+    explicit DebouncedButton(uint32_t minStableMs = 40, uint32_t longPressMs = 0,
+                             uint32_t veryLongPressMs = 0);
 
     // Feed one raw sample. Returns the event caused by this sample, or NONE.
     // Call this at a steady interval; the shorter and more regular, the more precise the
@@ -62,10 +67,12 @@ private:
 
     const uint32_t minStableMs;
     const uint32_t longPressMs;
+    const uint32_t veryLongPressMs;
 
     DebounceState debounceState = DebounceState::RELEASED_STABLE;
     bool isPressedDebounced = false;
     bool longPressReported = false;
+    bool veryLongPressReported = false;
 
     uint32_t timestampRawChangeMs = 0;    // when the raw input last differed from the stable state
     uint32_t timestampPressStartMs = 0;   // when the press that is now active first appeared

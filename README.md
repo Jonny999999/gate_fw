@@ -92,23 +92,47 @@ one of them, so the gate can be operated without looking at it.
 |---|---|---|
 | **Open button, short press** | opens a small gap (~1.9 s of travel) | one short beep |
 | **Open button, press again** (while it is still waiting) | widens the gap by ~0.7 s per press | one very short beep per press |
-| **Open button, press and keep holding** | opens completely | one long tone |
-| **Open button: short press, then press and hold** | opens the small gap and **closes again by itself** once the way is clear | one long tone, then two short ones |
+| **Open button, hold ~0.8 s** | opens completely, stays open | one long tone |
+| **Open button, keep holding ~2.5 s** | opens completely and **closes again by itself** | long tone, then long-short-short |
+| **Open button: short press, then press and hold** | opens the small gap and **closes again by itself** | long tone, then long-short-short |
 | **Close button** or **remote B** | closes completely | one long tone |
 | **Remote A** | opens completely | one long tone |
 | **Any button while a gate moves** | stops the movement | one medium tone |
 
-The gate distinguishes "hold from the start" (open completely) from "short press, release,
-then hold" (open a gap and close behind me) - so the familiar full-open gesture is unchanged.
+### The open button, held down
+The gate starts opening the moment you press, and holding on escalates. **Release when you
+hear what you want** - each stage announces itself:
 
-### Let me through, then close behind me
-Short press, then press and hold. The gate opens the small gap and closes again on its own
-**once the light barrier has been continuously free for 20 seconds** - not simply 20 seconds
-after opening.
+| Hold | Meaning | You hear |
+|---|---|---|
+| release quickly | small gap | one short beep |
+| ~0.8 s | open completely | one long tone |
+| ~2.5 s | open completely **and close again afterwards** | long tone, then two short ones |
+
+Nothing is committed until you let go, so the familiar "hold it down to open the gate fully"
+gesture is unchanged - you simply now have the option of holding on a moment longer.
+
+### Close behind me
+Two ways in, depending on how wide you need it:
+
+- **Short press, then press and hold** - opens the small gap, for walking through.
+- **Hold the first press ~2.5 s** - opens completely, for driving out.
+
+Either way the gate closes again on its own **once the light barrier has been continuously
+free for long enough** - not simply a fixed time after opening.
 
 That distinction is the point: the gate waits until everybody is actually through and
 nothing else is coming. Walking in and out, or taking a while with a trailer, restarts the
-20 seconds instead of racing a deadline.
+wait instead of racing a deadline.
+
+| Opening | Barrier must stay clear for |
+|---|---|
+| small gap (walking through) | 10 s |
+| fully open (driving out) | 120 s |
+
+The full opening waits much longer on purpose: you open the gate, walk to the car, start it
+and drive out - the barrier may not be interrupted at all for a minute or more, and the gate
+must not close in front of you meanwhile.
 
 - An accelerating beep countdown announces the closing over the last 4 seconds, the same one
   the gate uses whenever it starts moving by itself. Interrupting the light barrier during
@@ -119,20 +143,26 @@ nothing else is coming. Walking in and out, or taking a while with a trailer, re
   immediately instead of waiting.
 - If the barrier is interrupted while it is already closing, it behaves like any other
   close: it pauses, and resumes 4 seconds after the way is clear again.
-- The fault LED gives a short flash once per second while an automatic close is pending.
 
 ### Fault LED
 The red LED keeps showing the last problem until the next movement is started. The blink
 rate says how serious it is - the faster, the more attention it needs:
 
-| Blink rate | Meaning |
+Two shapes, told apart at a glance:
+
+- **Even blinking** - something went wrong. The faster, the more serious.
+- **Short flash with a gap** - nothing is wrong, but the gate will move on its own in a
+  while. Any button press calls it off.
+
+| Pattern | Meaning |
 |---|---|
-| very fast (10/s) | VFD communication failed - the drives could not be reached |
-| fast (2.5/s) | movement timeout - a limit switch was not reached in time |
-| slow (1/s) | motor current too high - something was in the way while closing |
-| very slow (0.5/s) | the light barrier stayed blocked, the movement was given up |
-| short flash, long gap | no fault: an automatic close is pending |
-| steady on (while idle) | no fault: the light barrier is interrupted (useful for aligning it) |
+| even, very fast (10/s) | VFD communication failed - the drives could not be reached |
+| even, fast (2.5/s) | movement timeout - a limit switch was not reached in time |
+| even, slow (1/s) | motor current too high - something was in the way while closing |
+| even, very slow (0.5/s) | the light barrier stayed blocked, the movement was given up |
+| flash every 0.5 s | movement paused, waiting for the light barrier to clear |
+| flash every second | an automatic close is pending |
+| steady on (while idle) | the light barrier is interrupted (useful for aligning it) |
 
 The green panel LED is wired in parallel with the buzzer and simply echoes the beeps.
 

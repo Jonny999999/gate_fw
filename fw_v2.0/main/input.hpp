@@ -34,6 +34,7 @@ struct InputState
     //--- events (each press is reported exactly once, none are lost) ---
     bool openButtonPressed;    // open button press confirmed
     bool openButtonLongPress;  // open button held past the long-press threshold
+    bool openButtonVeryLongPress; // ... and kept held past the second, longer threshold
     bool closeButtonPressed;   // close button press confirmed
     bool remoteOpenPressed;    // remote 'A' button
     bool remoteClosePressed;   // remote 'B' button

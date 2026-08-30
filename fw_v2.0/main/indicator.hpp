@@ -110,6 +110,10 @@ enum class FaultCode : uint8_t
 };
 
 // What the gate is currently doing. Not latched - overwritten as the situation changes.
+// Whenever a movement is pending without the user having asked for it right now
+// (WAITING_FOR_BARRIER, AUTO_CLOSE_PENDING) the LED flashes an asymmetric pattern that
+// cannot be confused with the evenly blinking fault codes: something is queued, nothing is
+// broken, and any button press calls it off.
 // Shown on the fault LED for now, because that is the only LED software can drive; a green
 // status LED would be the better home for these (see the hardware note at the top).
 enum class StatusIndication : uint8_t

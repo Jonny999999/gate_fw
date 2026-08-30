@@ -7,9 +7,10 @@ const char *buttonEventToString(ButtonEvent event)
 {
     switch (event)
     {
-    case ButtonEvent::PRESSED:    return "PRESSED";
-    case ButtonEvent::LONG_PRESS: return "LONG_PRESS";
-    case ButtonEvent::RELEASED:   return "RELEASED";
+    case ButtonEvent::PRESSED:         return "PRESSED";
+    case ButtonEvent::LONG_PRESS:      return "LONG_PRESS";
+    case ButtonEvent::VERY_LONG_PRESS: return "VERY_LONG_PRESS";
+    case ButtonEvent::RELEASED:        return "RELEASED";
     case ButtonEvent::NONE:
     default:                      return "NONE";
     }
@@ -19,8 +20,8 @@ const char *buttonEventToString(ButtonEvent event)
 //===============================
 //======== Constructor ==========
 //===============================
-DebouncedButton::DebouncedButton(uint32_t minStableMs, uint32_t longPressMs)
-    : minStableMs(minStableMs), longPressMs(longPressMs)
+DebouncedButton::DebouncedButton(uint32_t minStableMs, uint32_t longPressMs, uint32_t veryLongPressMs)
+    : minStableMs(minStableMs), longPressMs(longPressMs), veryLongPressMs(veryLongPressMs)
 {
 }
 
@@ -62,6 +63,7 @@ ButtonEvent DebouncedButton::update(bool rawIsPressed, uint32_t nowMs)
             debounceState = DebounceState::PRESSED_STABLE;
             isPressedDebounced = true;
             longPressReported = false;
+            veryLongPressReported = false;
             timestampLastChangeMs = nowMs;
             return ButtonEvent::PRESSED;
         }
@@ -83,6 +85,14 @@ ButtonEvent DebouncedButton::update(bool rawIsPressed, uint32_t nowMs)
             //     is what makes long-press detection independent of how busy the consumer is.
             longPressReported = true;
             return ButtonEvent::LONG_PRESS;
+        }
+        else if (veryLongPressMs > 0 && !veryLongPressReported && (nowMs - timestampPressStartMs) >= veryLongPressMs)
+        {
+            // 3c. still held -> report the second threshold, also while still held.
+            //     Both thresholds fire for the same press, so the consumer can confirm the
+            //     first meaning and let the user keep holding to escalate to the second.
+            veryLongPressReported = true;
+            return ButtonEvent::VERY_LONG_PRESS;
         }
         break;
 

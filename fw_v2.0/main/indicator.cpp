@@ -53,16 +53,25 @@ extern "C" {
 // directly in that table instead of in a macro that would only add a second place to edit.
 
 //--- LED blink patterns ---
-// The rate is the message: the faster it blinks, the more attention it needs.
+// Two families, told apart by their SHAPE rather than by their speed:
+//
+//   symmetric (equal on and off)     -> something went wrong. The faster, the more serious.
+//   asymmetric (short flash, gap)    -> nothing is wrong, but the gate will move on its own
+//                                       in a while. Press any button to call it off.
+//
+// Keeping those visually distinct matters more than the individual rates: a pending
+// automatic movement must never look like a fault, or people stop trusting the LED.
 #define INDICATOR_BLINK_OFF        { BlinkMode::OFF,      0,    0, 0 }
 #define INDICATOR_BLINK_SOLID      { BlinkMode::ON,       0,    0, 0 }
 #define INDICATOR_BLINK_VERY_FAST  { BlinkMode::BLINKING, 100,  100, INDICATOR_REPEAT_FOREVER }
 #define INDICATOR_BLINK_FAST       { BlinkMode::BLINKING, 200,  200, INDICATOR_REPEAT_FOREVER }
 #define INDICATOR_BLINK_SLOW       { BlinkMode::BLINKING, 500,  500, INDICATOR_REPEAT_FOREVER }
 #define INDICATOR_BLINK_VERY_SLOW  { BlinkMode::BLINKING, 1000, 1000, INDICATOR_REPEAT_FOREVER }
-// Short flash, long gap - deliberately asymmetric, so it cannot be mistaken for one of the
-// evenly blinking fault codes. Means "armed and waiting", not "something is wrong".
-#define INDICATOR_BLINK_HEARTBEAT  { BlinkMode::BLINKING,  100,  900, INDICATOR_REPEAT_FOREVER }
+// Pending automatic movement - short flash with a long gap. The faster of the two is used
+// while the gate is actively waiting for the way to clear, the calmer one while it is just
+// counting down.
+#define INDICATOR_BLINK_PENDING_CALM   { BlinkMode::BLINKING, 100,  900, INDICATOR_REPEAT_FOREVER }
+#define INDICATOR_BLINK_PENDING_ACTIVE { BlinkMode::BLINKING, 100,  400, INDICATOR_REPEAT_FOREVER }
 
 
 //===============================
@@ -251,12 +260,14 @@ static BlinkPattern statusToPattern(StatusIndication status)
 {
     switch (status)
     {
-    // same blink rate the paused state has always used
-    case StatusIndication::WAITING_FOR_BARRIER: return INDICATOR_BLINK_FAST;
+    // A movement is paused and will resume on its own - not a fault, so it must not look
+    // like one. This used to be an evenly blinking pattern, indistinguishable from a fault
+    // code at a glance.
+    case StatusIndication::WAITING_FOR_BARRIER: return INDICATOR_BLINK_PENDING_ACTIVE;
+    // the gate is going to close by itself - visible warning while standing next to it
+    case StatusIndication::AUTO_CLOSE_PENDING:  return INDICATOR_BLINK_PENDING_CALM;
     // solid, so the barrier can be aligned by watching the LED
     case StatusIndication::BARRIER_OBSTRUCTED:  return INDICATOR_BLINK_SOLID;
-    // the gate is going to move by itself - visible warning while standing next to it
-    case StatusIndication::AUTO_CLOSE_PENDING:  return INDICATOR_BLINK_HEARTBEAT;
     case StatusIndication::IDLE:
     default:                                    return INDICATOR_BLINK_OFF;
     }
