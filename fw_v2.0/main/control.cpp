@@ -69,8 +69,8 @@ bool lightBarrierIsObstructed()
 {
     // when ignoring the light barrier it is always considered free / not obstructed
 #if (BARRIER_IS_IGNORED)
-    return false
-#endif
+    return false;
+#else
     static bool stateOld = false;
     // when obstructed:
     // - light barrier pulls 12V input to GND
@@ -89,6 +89,7 @@ bool lightBarrierIsObstructed()
         timestampLastBarrierChange = esp_log_timestamp();
     }
     return stateNew;
+#endif
 }
 
 

@@ -34,10 +34,13 @@ buzzer_t::buzzer_t(gpio_num_t gpio_pin_f, uint16_t msGap_f){
 //function to add a beep command to the queue
 void buzzer_t::beep(uint8_t count, uint16_t msOn, uint16_t msOff){
     //create entry struct with provided data
+    //note: these used to be written as 'count = count, ...' which are ASSIGNMENTS to the
+    //parameters, not designated initialisers - it only produced the right struct because
+    //the assignment expressions happen to evaluate to the values in declaration order
     struct beepEntry entryInsert = {
-        count = count,
-        msOn = msOn,
-        msOff = msOff
+        .count = count,
+        .msOn = msOn,
+        .msOff = msOff
     };
 
     // Send a pointer to a struct AMessage object.  Don't block if the
