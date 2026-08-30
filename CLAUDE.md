@@ -4,7 +4,7 @@ Firmware + hardware for a self-made automated sliding gate (2 gates, custom moto
 VFDs via RS485/Modbus, limit switches, buttons, remote, light barrier, ESP32 on a
 custom PCB).
 
-- Active firmware: `fw_v2.0/` (ESP-IDF **5.3**, see note below). `fw_v1.0-legacy/` is
+- Active firmware: `fw_v2.0/` (ESP-IDF **5.5.1**, see below). `fw_v1.0-legacy/` is
   reference only — do not change it.
 - Plan and open work items: **[ROADMAP.md](ROADMAP.md)** — read it before starting work
   and keep it up to date as items are completed.
@@ -12,20 +12,19 @@ custom PCB).
 
 ## Build
 
-The project targets ESP-IDF 5.3. The local 5.3 toolchain currently has a broken Python
-venv (`idf5.3_py3.13_env` points at a python3.13 that no longer exists after a system
-upgrade to 3.14). ESP-IDF 5.5.1 at `/home/jonny/esp/v5.5.1/esp-idf` works and the project
-compiles with it.
-
-Build **out of tree** so the checked-in `sdkconfig` is not rewritten by a newer IDF:
+The project targets **ESP-IDF 5.5.1**, installed at `/home/jonny/esp/v5.5.1/esp-idf`.
+(Note: `/opt/esp-idf` is empty; the 5.3 install is unusable because its python venv
+`idf5.3_py3.13_env` points at a python3.13 that no longer exists after the system upgrade
+to python 3.14.)
 
 ```bash
 . /home/jonny/esp/v5.5.1/esp-idf/export.sh
-idf.py -B /tmp/gate_fw-build build
-git checkout -- fw_v2.0/sdkconfig   # 5.5 rewrites it; revert unless intentional
+idf.py build
 ```
 
-`sdkconfig` **is** tracked in git — never commit an IDF-version-induced rewrite of it.
+`sdkconfig` **is** tracked in git. Building with a different IDF version rewrites it with
+that version's option set — if that happens unintentionally, revert it
+(`git checkout -- fw_v2.0/sdkconfig`) rather than committing the churn.
 
 ## Code style
 

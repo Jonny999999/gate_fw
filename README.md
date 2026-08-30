@@ -45,13 +45,13 @@ Photos of the V2.0 hardware setup (new custom made pcb, control cabinet and addi
 
 # Installation
 ### Install esp-idf
-For this project **ESP-IDF v5.3** is required  
+For this project **ESP-IDF v5.5.1** is required  
 (with other versions it most likely will not compile)
 ```bash
-#download esp-idf (verify version!)
-yay -S esp-idf #alternatively clone the esp-idf repository from github
-#run installation script in installed folder
-/opt/esp-idf/install.sh
+#clone the esp-idf repository and check out the required version
+git clone -b v5.5.1 --recursive https://github.com/espressif/esp-idf.git ~/esp/v5.5.1/esp-idf
+#run installation script in the cloned folder
+~/esp/v5.5.1/esp-idf/install.sh esp32
 ```
 ### Clone this repo
 ```
@@ -61,9 +61,9 @@ git clone git@github.com:Jonny999999/gate_fw.git
 # Compilation
 ### Set up environment
 ```bash
-source /opt/esp-idf/export.sh
+source ~/esp/v5.5.1/esp-idf/export.sh
 ```
-(run once in terminal)
+(run once per terminal)
 
 ### Compile
 ```bash
