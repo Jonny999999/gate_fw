@@ -149,21 +149,60 @@ long-press detection.
       widening. If not, drop it — that would also let `WAIT_FOR_INPUT` collapse into a
       simple "short = gap, long = full, short+long = gap with auto-close".
 
-### 2.3 New gesture: "let me through, then close behind me"
-Requested behaviour: one easy, unmistakable sequence that opens the small gap and
-auto-closes after a delay.
-- [ ] Proposed gesture: **short press, then long press** (`1 short + 1 long`) on the
-      open button, within a generous window (~2 s).
-- [ ] Behaviour: open to the small opening → hold for `AUTO_CLOSE_DELAY_MS` (~20 s,
-      configurable) → run the same warning-beep countdown already used when resuming
-      after the light barrier clears → close completely.
-- [ ] Safety: the light barrier already guards the closing movement, so an unattended
-      auto-close is acceptable. Auto-close must still be cancellable by any button press
-      and must respect the existing barrier pause/timeout logic.
-- [ ] Needs a distinct state in the control state machine (e.g. `WAIT_AUTO_CLOSE`) and a
-      clear acoustic confirmation that auto-close is armed.
-- [ ] Consider making the auto-close delay restart while the barrier is obstructed
-      (someone still standing in the gap).
+### 2.3 New gesture: "let me through, then close behind me" — implemented
+- [x] Gesture: **short press, then press and hold**. Told apart from "hold from the start"
+      (= open completely) by `countPressed`, so the familiar full-open gesture is unchanged
+      and the gate still starts opening on the very first press.
+- [x] Opens the small gap, holds it for `AUTO_CLOSE_HOLD_OPEN_MS` (20 s), then closes.
+- [x] Distinct confirmation: `BuzzerSignal::AUTO_CLOSE_ARMED` is a two-part signal — one
+      long tone, then two short ones. Nothing else in the catalogue has that shape, so it
+      cannot be confused with a normal opening by ear. Cancelling plays the mirror image.
+- [x] The same accelerating countdown as the barrier resume announces the close
+      (`handleCountdownBeeps()`, now shared by both paths).
+- [x] The hold time restarts while the light barrier is interrupted, so the gate never
+      starts closing with somebody in the gap.
+- [x] Cancellable: **open** cancels and leaves the gate open, **close** closes immediately
+      instead of waiting out the rest. A gate error also cancels it — after a failed
+      movement the gate should not start moving again unattended.
+- [x] `WAIT_AUTO_CLOSE` control state, with its own LED indication (short flash, long gap —
+      deliberately asymmetric so it cannot be read as one of the evenly blinking faults).
+- [x] All closing goes through one `startClosingGates()` helper, so a manual close, a close
+      requested from the auto-close state and the timed close treat the barrier identically.
+- [x] **Barrier interruption during the automatic close: retries.** The close is not a
+      special case — it takes the same path as a manual one: pause → 4 s countdown → resume
+      on every clear, give up after `BARRIER_WAIT_FOR_FREE_TIMEOUT_MS` (8 s) of *continuous*
+      obstruction. Both arguments for cancelling instead are already covered: staying in the
+      gateway past 8 s cancels it outright, and any button press cancels immediately.
+- [ ] **To decide at the gate:** is 20 s the right hold time, and is the 4 s countdown
+      window enough warning? Both are single constants at the top of `control.cpp`.
+- [ ] **Watch for:** the 8 s give-up raises a `BARRIER_BLOCKED_TOO_LONG` fault, so the LED
+      blinks slowly afterwards. For an automatic close that may read as "something broke"
+      rather than "somebody stayed in the gateway" — see whether it is useful or annoying.
+- [ ] No host tests for this yet — the control state machine still depends on the gate,
+      input and indicator modules directly. Worth abstracting once the behaviour has
+      settled at the gate.
+
+### 2.4 Documentation pass — after the UI is tested and settled
+Deliberately postponed: documenting an untested design in detail means rewriting it after
+the first session at the gate. The README already has a gesture table and a fault-LED blink
+table; what is still missing is the complete picture.
+
+- [ ] **Full operating manual in the README** — one table of *every* button/remote event
+      against *every* control state, so the state-dependent behaviour is explicit
+      (e.g. "while moving, any button stops"; "while waiting to close automatically, open
+      cancels but close closes immediately"). Source of truth is the switch in
+      `control.cpp`; check the table against it whenever the states change.
+- [ ] **Complete fault / indication reference** — the blink-code table plus, for each code,
+      what actually triggers it and what to check on the hardware.
+- [ ] **Firmware architecture section** — the four tasks (input 8, control 5, gate 5,
+      indicator 3), which queues connect them, who owns the RS485 bus, and why gate handling
+      is not in the control loop. A diagram would carry this better than prose; a drawio
+      next to the existing plans in `doc/` fits the repo.
+- [ ] **Tuning-constant reference** — one table of the behaviour constants with their file,
+      current value and what changing them does. Best done together with the `config.h`
+      split (1.2), so the table has a single file to point at.
+- [ ] Keep it one commit, separate from behaviour changes, so the docs can be redone
+      cheaply if the UI shifts again.
 
 ---
 
