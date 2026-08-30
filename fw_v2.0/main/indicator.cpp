@@ -60,6 +60,9 @@ extern "C" {
 #define INDICATOR_BLINK_FAST       { BlinkMode::BLINKING, 200,  200, INDICATOR_REPEAT_FOREVER }
 #define INDICATOR_BLINK_SLOW       { BlinkMode::BLINKING, 500,  500, INDICATOR_REPEAT_FOREVER }
 #define INDICATOR_BLINK_VERY_SLOW  { BlinkMode::BLINKING, 1000, 1000, INDICATOR_REPEAT_FOREVER }
+// Short flash, long gap - deliberately asymmetric, so it cannot be mistaken for one of the
+// evenly blinking fault codes. Means "armed and waiting", not "something is wrong".
+#define INDICATOR_BLINK_HEARTBEAT  { BlinkMode::BLINKING,  100,  900, INDICATOR_REPEAT_FOREVER }
 
 
 //===============================
@@ -173,25 +176,35 @@ private:
 //===============================
 // One row per BuzzerSignal, in enum order. Both the order and the completeness are checked
 // at compile time below, so adding a signal without a timing cannot slip through.
+// A signal is one or two parts, queued back to back. Two parts allow a shape that no
+// single on/off rhythm can produce (e.g. one long tone followed by two short ones), which
+// is what makes a signal recognisable by ear rather than by counting beeps.
+// The second part is optional: repeatCount 0 means "not used".
 struct BuzzerSignalDefinition
 {
     BuzzerSignal signal; // which signal this row describes
-    uint16_t msOn;
-    uint16_t msOff;
-    uint16_t repeatCount;
+    BuzzerQueueEntry parts[2];
 };
 
 static constexpr BuzzerSignalDefinition kBuzzerSignals[] = {
-    {BuzzerSignal::STARTUP,                   50,  100, 3}, // firmware booted
-    {BuzzerSignal::BUTTON_ACKNOWLEDGED,      100,    0, 1}, // open button registered
-    {BuzzerSignal::ADDITIONAL_PRESS,          60,    0, 1}, // one more press counted
-    {BuzzerSignal::OPEN_FURTHER_CONFIRMED,    40,   20, 2}, // opening further
-    {BuzzerSignal::MOVEMENT_START_WARNING,  1000,    0, 1}, // gate is about to move
-    {BuzzerSignal::MOVEMENT_STOPPED,         400,    0, 1}, // movement stopped
-    {BuzzerSignal::BARRIER_BLOCKED,          100,   50, 4}, // light barrier interrupted
-    {BuzzerSignal::LIMIT_SWITCH_REACHED,     100,   50, 1}, // limit switch changed while off
-    {BuzzerSignal::OBSTRUCTION_DETECTED,    1500,  100, 1}, // motor current too high
-    {BuzzerSignal::FAULT,                     70,  100, 5}, // something went wrong
+    //                                      {  msOn, msOff, count } [, second part ]
+    {BuzzerSignal::STARTUP,                {{    50,   100,     3 }}}, // firmware booted
+    {BuzzerSignal::BUTTON_ACKNOWLEDGED,    {{   100,     0,     1 }}}, // open button registered
+    {BuzzerSignal::ADDITIONAL_PRESS,       {{    60,     0,     1 }}}, // one more press counted
+    {BuzzerSignal::OPEN_FURTHER_CONFIRMED, {{    40,    20,     2 }}}, // opening further
+    {BuzzerSignal::MOVEMENT_START_WARNING, {{  1000,     0,     1 }}}, // gate is about to move
+    {BuzzerSignal::MOVEMENT_STOPPED,       {{   400,     0,     1 }}}, // movement stopped
+    {BuzzerSignal::BARRIER_BLOCKED,        {{   100,    50,     4 }}}, // light barrier interrupted
+    {BuzzerSignal::LIMIT_SWITCH_REACHED,   {{   100,    50,     1 }}}, // limit switch changed while off
+    {BuzzerSignal::OBSTRUCTION_DETECTED,   {{  1500,   100,     1 }}}, // motor current too high
+    {BuzzerSignal::FAULT,                  {{    70,   100,     5 }}}, // something went wrong
+
+    // Deliberately two-part and unlike anything above: one long tone, then two short ones.
+    // The user has to be able to tell "the gate will close again by itself" apart from a
+    // normal opening at a glance, without counting beeps.
+    {BuzzerSignal::AUTO_CLOSE_ARMED,       {{   500,   200,     1 }, {  90,  90,  2 }}},
+    // The mirror image: two short, then one long - "no, it will stay open".
+    {BuzzerSignal::AUTO_CLOSE_CANCELLED,   {{    90,    90,     2 }, { 500,   0,  1 }}},
 };
 
 static constexpr size_t kBuzzerSignalCount = sizeof(kBuzzerSignals) / sizeof(kBuzzerSignals[0]);
@@ -211,12 +224,11 @@ static_assert(buzzerSignalTableIsInEnumOrder(),
               "kBuzzerSignals rows must be in the same order as the BuzzerSignal enum");
 
 
-static BuzzerQueueEntry buzzerSignalToEntry(BuzzerSignal signal)
+static const BuzzerSignalDefinition *buzzerSignalToDefinition(BuzzerSignal signal)
 {
     if ((size_t)signal >= kBuzzerSignalCount)
-        return {0, 0, 0};
-    const BuzzerSignalDefinition &definition = kBuzzerSignals[(size_t)signal];
-    return {definition.msOn, definition.msOff, definition.repeatCount};
+        return nullptr;
+    return &kBuzzerSignals[(size_t)signal];
 }
 
 
@@ -243,6 +255,8 @@ static BlinkPattern statusToPattern(StatusIndication status)
     case StatusIndication::WAITING_FOR_BARRIER: return INDICATOR_BLINK_FAST;
     // solid, so the barrier can be aligned by watching the LED
     case StatusIndication::BARRIER_OBSTRUCTED:  return INDICATOR_BLINK_SOLID;
+    // the gate is going to move by itself - visible warning while standing next to it
+    case StatusIndication::AUTO_CLOSE_PENDING:  return INDICATOR_BLINK_HEARTBEAT;
     case StatusIndication::IDLE:
     default:                                    return INDICATOR_BLINK_OFF;
     }
@@ -369,11 +383,20 @@ void indicatorStart(const IndicatorPinConfig &pins)
 
 void indicatorBeep(BuzzerSignal signal)
 {
-    const BuzzerQueueEntry entry = buzzerSignalToEntry(signal);
-    if (entry.repeatCount == 0)
+    const BuzzerSignalDefinition *definition = buzzerSignalToDefinition(signal);
+    if (definition == nullptr || buzzerQueue == nullptr)
         return;
-    if (buzzerQueue != nullptr && xQueueSend(buzzerQueue, &entry, 0) != pdTRUE)
-        ESP_LOGW(TAG_INDICATOR, "buzzer queue full - dropped signal %d", (int)signal);
+
+    for (const BuzzerQueueEntry &part : definition->parts)
+    {
+        if (part.repeatCount == 0)
+            continue; // unused second part
+        if (xQueueSend(buzzerQueue, &part, 0) != pdTRUE)
+        {
+            ESP_LOGW(TAG_INDICATOR, "buzzer queue full - dropped signal %d", (int)signal);
+            return;
+        }
+    }
 }
 
 

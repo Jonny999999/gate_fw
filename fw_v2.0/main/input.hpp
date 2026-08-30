@@ -40,6 +40,7 @@ struct InputState
     bool anyButtonPressed;     // any of the four press events above (used to stop movement)
 
     //--- current levels ---
+    bool openButtonIsHeld;          // open button currently held down
     bool closeButtonIsHeld;         // close button currently held down
     bool lightBarrierIsObstructed;  // light barrier currently interrupted
 };

@@ -10,15 +10,17 @@ time without re-explaining the context.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done
 
-**Progress:**
-- `cleanup-rework`, tagged **`V2.2-rc1`** — toolchain moved to ESP-IDF 5.5.1, bugs
-  B1, B3–B10, B14, B15 fixed, host test harness added. *Not yet tested on the gate.*
-- `rework-tasks` (branched from `V2.2-rc1`) — task/queue restructuring. All 15 bugs
-  now fixed. *Not yet tested on the gate.*
+**Progress — three stacked branches, none tested on the gate yet:**
 
-Test `V2.2-rc1` first and on its own: it is small and surgical, and some of its fixes
-do change behaviour (B6 makes position tracking work for the first time, B5 re-enables
-a dead code path). Flashing both sets at once makes any regression hard to attribute.
+| Branch | Tag | Contents |
+|---|---|---|
+| `cleanup-rework` | **`V2.2-rc1`** | ESP-IDF 5.5.1, bugs B1, B3–B10, B14, B15, host tests |
+| `rework-tasks` | **`V2.2-rc2`** | task/queue restructuring, indicator module — all 15 bugs fixed |
+| `ui-rework` | — | Phase 2: automatic closing, gesture rework (targets V2.3) |
+
+Test them **in that order, separately**. Each set is small on its own, and some fixes do
+change behaviour (B6 makes position tracking work for the first time, B5 re-enables a dead
+code path). Flashing everything at once makes any regression hard to attribute.
 
 ---
 
@@ -129,21 +131,23 @@ Depends on Phase 1 (a reliable, deterministic input layer).
       Adding it in firmware is then a second `IndicatorChannel` plus a status mapping.
 
 ### 2.1 Reliable button handling
-- [ ] Long-press must be unambiguous: evaluate it on a **clean, per-press** measurement,
-      report `LONG_PRESS` once the hold time is exceeded *while still held*, and report
-      `SHORT_PRESS` only on release below the threshold. No reliance on carried-over state.
-- [ ] Review `FULLY_OPEN_LONG_PRESS_DURATION_MS` (currently 600 ms) once the timing is
-      deterministic — probably raise to ~800–1000 ms for a clear separation.
+- [x] Long-press is evaluated on a clean, per-press measurement and reported once, while
+      the button is still held (`DebouncedButton`, delivered in Phase 1).
+- [x] Threshold raised 600 → **800 ms** (`OPEN_BUTTON_LONG_PRESS_MS` in `input.cpp`).
+      Safe now: the measurement is exact, and `control.cpp` suspends its input timeout
+      while the button is held, so the timeout no longer races the long press.
 
 ### 2.2 Simplify the "open further" sequence
 The current scheme (`IDLE → WAIT_FOR_INPUT`, repeated presses within
 `min(BUTTON_PRESS_INITIAL_OPEN_TIME_MS, BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS)` add
 `700 ms` each) is effectively unused: the window is hard to hit and it competes with
 long-press detection.
-- [ ] Decide: **remove it**, or replace it with "press-and-hold = keep moving, release =
-      stop" (jog mode), which is self-explanatory and needs no timing window.
-- [ ] Recommendation to evaluate: keep exactly three unambiguous gestures on the open
-      button — *short* = small opening, *long* = fully open, *press while moving* = stop.
+- [~] **Kept for now**, because the auto-close gesture builds on the same counter and the
+      window is no longer hostile: the timeout is suspended while the button is held, so
+      the repeated presses and the long press no longer compete.
+- [ ] **Still to decide at the gate:** whether anyone actually uses the repeated-press
+      widening. If not, drop it — that would also let `WAIT_FOR_INPUT` collapse into a
+      simple "short = gap, long = full, short+long = gap with auto-close".
 
 ### 2.3 New gesture: "let me through, then close behind me"
 Requested behaviour: one easy, unmistakable sequence that opens the small gap and

@@ -70,6 +70,8 @@ enum class BuzzerSignal : uint8_t
     LIMIT_SWITCH_REACHED,   // a limit switch changed while the gate was off
     OBSTRUCTION_DETECTED,   // motor current limit exceeded while closing
     FAULT,                  // something went wrong (VFD communication, timeout, ...)
+    AUTO_CLOSE_ARMED,       // gate will close again on its own after the hold time
+    AUTO_CLOSE_CANCELLED,   // the pending automatic close was called off
 
     COUNT                   // keep last - number of signals, used to check the timing table
 };
@@ -114,7 +116,8 @@ enum class StatusIndication : uint8_t
 {
     IDLE = 0,             // nothing to show
     WAITING_FOR_BARRIER,  // movement paused, waiting for the light barrier to clear
-    BARRIER_OBSTRUCTED    // barrier interrupted while idle (useful when aligning it)
+    BARRIER_OBSTRUCTED,   // barrier interrupted while idle (useful when aligning it)
+    AUTO_CLOSE_PENDING    // gate is open and will close again on its own
 };
 
 // What may drive the LED, lowest to highest. A higher priority always wins, so a fault can

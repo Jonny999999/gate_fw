@@ -16,6 +16,15 @@
 // (OPEN_BUTTON_LONG_PRESS_MS), where it is evaluated by the input sampling task.
 // It must stay smaller than the input timeout, which is the min of the two values above.
 
+//--- automatic closing ("let me through, then close behind me") ---
+// Armed with: 1 short press (gate starts opening) + 1 long press.
+// How long the gate stays open before it closes again on its own.
+#define AUTO_CLOSE_HOLD_OPEN_MS 20000
+// The last part of that hold time is announced with the same accelerating beep countdown
+// that is used when the gate resumes after the light barrier cleared, so 'the gate is
+// about to move by itself' always sounds the same.
+#define AUTO_CLOSE_COUNTDOWN_MS 4000
+
 #define BARRIER_IS_IGNORED 0 // if 1 light-barrier is always considered free / not-obstructed
 #define BARRIER_DELAY_BEFORE_RESTART_MS 4000 // time after which movement is resumed after barrier is free again
 #define BARRIER_WAIT_FOR_FREE_TIMEOUT_MS 8000 // if barrier is obstructed longer than that continously the gate is no longer re-started after clear
@@ -35,9 +44,11 @@ enum class ControlState
     IDLE,
     WAIT_FOR_INPUT,
     MOVING_TO_TARGET,
-    CLOSING_MOVEMENT_PAUSED
+    CLOSING_MOVEMENT_PAUSED,
+    WAIT_AUTO_CLOSE // gate is open and will close again on its own, see AUTO_CLOSE_HOLD_OPEN_MS
 };
-const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET", "CLOSING_MOVEMENT_PAUSED"};
+const char *controlStateStr[] = {"IDLE", "WAIT_FOR_INPUT", "MOVING_TO_TARGET",
+                                 "CLOSING_MOVEMENT_PAUSED", "WAIT_AUTO_CLOSE"};
 // TODO: add and handle state e.g. LOCKED
 
 // Control state variables
@@ -51,6 +62,10 @@ static uint8_t countPressed = 0;
 static uint32_t timestampLastBarrierChange = 0;
 static uint32_t timestampLastCountdownBeep;
 static bool barrierIsObstructedWhileIdle = false; // updated in IDLE, shown on the LED
+
+// automatic closing
+static bool autoCloseIsArmed = false;        // set while the current movement ends in WAIT_AUTO_CLOSE
+static uint32_t timestampAutoCloseStart = 0; // when the hold-open time started counting
 
 // GPIO assignment passed from main
 ControlConfig *config;
@@ -89,6 +104,70 @@ static bool lightBarrierIsObstructed(const InputState &input)
 #endif
 }
 
+
+
+// Target run time for a partial opening: a base gap, widened by every additional press.
+static uint32_t openTargetRunTimeMs(uint8_t additionalPresses)
+{
+    return BUTTON_PRESS_INITIAL_OPEN_TIME_MS + (BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS * additionalPresses);
+}
+
+
+// Begin closing both gates, from wherever the request came from (button, remote, or the
+// automatic close). If the light barrier is interrupted the movement is not started yet -
+// the gate waits in CLOSING_MOVEMENT_PAUSED until the way is clear.
+// Returns the control state to continue in.
+//
+// playStartWarning is false for the automatic close: the beep countdown leading up to it
+// has already announced the movement, a second warning tone would only be noise.
+static ControlState startClosingGates(const InputState &input, bool playStartWarning)
+{
+    // a new movement clears the indication of the previous one
+    clearGateErrors();
+    indicatorClearFault();
+
+    if (playStartWarning)
+        indicatorBeep(BuzzerSignal::MOVEMENT_START_WARNING);
+
+    if (lightBarrierIsObstructed(input))
+    {
+        indicatorBeep(BuzzerSignal::BARRIER_BLOCKED);
+        ESP_LOGE(TAG_CTL, "Close requested but the barrier is obstructed -> waiting for it to clear");
+        // Start the obstruction timeout now, not from whenever the barrier was last
+        // interrupted - otherwise requesting a close while already standing in the barrier
+        // times out immediately.
+        timestampLastBarrierChange = millis();
+        return ControlState::CLOSING_MOVEMENT_PAUSED;
+    }
+
+    gateSendCommand(GateCommandType::CLOSE_COMPLETELY);
+    return ControlState::MOVING_TO_TARGET;
+}
+
+
+// Accelerating beep countdown, played whenever the gate is about to start moving on its
+// own: the shorter the remaining time, the shorter the gap between beeps.
+// Used both when resuming after the light barrier cleared and before an automatic close,
+// so "the gate will move by itself in a moment" always sounds the same.
+// Call once per control loop while waiting; it beeps when the next one is due.
+static void handleCountdownBeeps(int32_t timeRemainingMs, uint32_t countdownDurationMs)
+{
+    if (timeRemainingMs <= (int32_t)BARRIER_BEEP_INTERVAL_MIN_MS || countdownDurationMs == 0)
+        return;
+
+    const uint32_t beepIntervalMs =
+        BARRIER_BEEP_INTERVAL_MIN_MS +
+        ((uint32_t)timeRemainingMs * (BARRIER_BEEP_INTERVAL_MAX_MS - BARRIER_BEEP_INTERVAL_MIN_MS)) /
+            countdownDurationMs;
+
+    if (millis() - timestampLastCountdownBeep < beepIntervalMs)
+        return;
+
+    const uint32_t buzzerOnDurationMs = std::min(beepIntervalMs, (uint32_t)70);
+    ESP_LOGD(TAG_CTL, "countdown: %ld ms remaining, beep interval %lu ms", (long)timeRemainingMs, beepIntervalMs);
+    indicatorBeepCustom(1, buzzerOnDurationMs, 0);
+    timestampLastCountdownBeep = millis();
+}
 
 
 //================================
@@ -135,25 +214,7 @@ void controlTask(void *param)
                 ESP_LOGW(TAG_CTL, "%sclose Button pressed - Closing completely", 
                     input.remoteClosePressed ? "REMOTE-control " : "");
                 timestampLastAction = millis();
-                indicatorBeep(BuzzerSignal::MOVEMENT_START_WARNING);
-                if (lightBarrierIsObstructed(input)){
-                    // barrier is obstructed -> wait for clear in CLOSING_MOVEMENT_PAUSED state before starting
-                    indicatorBeep(BuzzerSignal::BARRIER_BLOCKED);
-                    ESP_LOGE(TAG_CTL, "Close command received but barrier currently obstructed saving close request -> switching to PAUSED");
-                    // start the obstruction timeout now, not from whenever the barrier was
-                    // last interrupted - otherwise pressing close while already standing in
-                    // the barrier times out immediately
-                    // (the MOVING_TO_TARGET -> PAUSED path below does the same)
-                    timestampLastBarrierChange = millis();
-                    ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
-                } else {
-                    // barrier not obstructed -> close immediately
-                    gateSendCommand(GateCommandType::CLOSE_COMPLETELY);
-                    ctlState = ControlState::MOVING_TO_TARGET;
-                    // a new movement clears the indication of the previous one
-                    clearGateErrors();
-                    indicatorClearFault();
-                }
+                ctlState = startClosingGates(input, true);
             }
             //--- button open ---
             // start opening, wait for further input
@@ -200,11 +261,30 @@ void controlTask(void *param)
                 indicatorBeep(BuzzerSignal::MOVEMENT_STOPPED);
                 ctlState = ControlState::IDLE;
             }
-            //--- open completely ---
+            //--- long press: open completely, or arm the automatic close ---
+            // Which one depends on whether this is still the FIRST press:
+            //   press and keep holding            -> open completely (as before)
+            //   short press, release, press+hold  -> "let me through, close behind me"
+            // The two are told apart by countPressed, so the familiar "hold it down to open
+            // the gate fully" gesture keeps working exactly as it did.
             else if (input.openButtonLongPress)
-            { // open button held past the long-press threshold (detected by the input task)
-                ESP_LOGW(TAG_CTL, "long press -> Opening completely");
-                indicatorBeep(BuzzerSignal::MOVEMENT_START_WARNING);
+            {
+                if (countPressed == 0)
+                {
+                    ESP_LOGW(TAG_CTL, "long press on the first press -> Opening completely");
+                    indicatorBeep(BuzzerSignal::MOVEMENT_START_WARNING);
+                }
+                else
+                {
+                    // The press that turned into a long press picked the mode, it should not
+                    // also widen the gap - so undo the increment it caused.
+                    countPressed--;
+                    gateSendCommand(GateCommandType::SET_TARGET_RUN_TIME, openTargetRunTimeMs(countPressed));
+                    autoCloseIsArmed = true;
+                    ESP_LOGW(TAG_CTL, "short press + long press -> opening for %lu ms, closing automatically %d ms later",
+                             openTargetRunTimeMs(countPressed), AUTO_CLOSE_HOLD_OPEN_MS);
+                    indicatorBeep(BuzzerSignal::AUTO_CLOSE_ARMED);
+                }
                 ctlState = ControlState::MOVING_TO_TARGET;
             }
             //--- increment open duration ---
@@ -216,11 +296,14 @@ void controlTask(void *param)
                 timestampLastAction = millis();
             }
             //--- timeout ---
-            else if (millis() - timestampLastAction > std::min(BUTTON_PRESS_INITIAL_OPEN_TIME_MS, BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS) - CONTROL_LOOP_HANDLE_DELAY_MS)
+            // note: suspended while the open button is still held down. The user is clearly
+            // still deciding, and without this the timeout would race the long-press
+            // threshold and could end the sequence just before the long press is reported.
+            else if (!input.openButtonIsHeld &&
+                     millis() - timestampLastAction > std::min(BUTTON_PRESS_INITIAL_OPEN_TIME_MS, BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS) - CONTROL_LOOP_HANDLE_DELAY_MS)
             { // no input for more than almost the currently desired runtime
                 ESP_LOGW(TAG_CTL, "Timeout waiting for further input - applying target duration");
-                gateSendCommand(GateCommandType::SET_TARGET_RUN_TIME,
-                                BUTTON_PRESS_INITIAL_OPEN_TIME_MS + (BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS * countPressed));
+                gateSendCommand(GateCommandType::SET_TARGET_RUN_TIME, openTargetRunTimeMs(countPressed));
 
                 if (countPressed > 1)
                 {
@@ -241,12 +324,28 @@ void controlTask(void *param)
             // note: a gate that runs into an error also sets the matching fault code on
             // the indicator itself, so nothing has to be done here - the LED keeps showing
             // it until the next start command clears it.
+            // An automatic close is called off though: after a failed movement the gate
+            // should not start moving again unattended.
+            if (autoCloseIsArmed && anyGateHadError())
+            {
+                ESP_LOGE(TAG_CTL, "Gate reported an error -> cancelling the pending automatic close");
+                autoCloseIsArmed = false;
+            }
 
             //--- idle when gates stopped at target or timeout ---
             if (gatesAreIdle())
             { // both do not move and are ready to receive new commands
-                ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
-                ctlState = ControlState::IDLE;
+                if (autoCloseIsArmed)
+                {
+                    ESP_LOGW(TAG_CTL, "Done - gate open, closing automatically in %d ms", AUTO_CLOSE_HOLD_OPEN_MS);
+                    timestampAutoCloseStart = millis();
+                    ctlState = ControlState::WAIT_AUTO_CLOSE;
+                }
+                else
+                {
+                    ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
+                    ctlState = ControlState::IDLE;
+                }
             }
             //--- stop with any user input ---
             else if (input.anyButtonPressed) // any remote input or button is pressed while moving to target
@@ -254,6 +353,8 @@ void controlTask(void *param)
                 ESP_LOGW(TAG_CTL, "User event received while moving => stopping movement");
                 gateSendCommand(GateCommandType::STOP);
                 indicatorBeep(BuzzerSignal::MOVEMENT_STOPPED);
+                // taking over manually also calls off a pending automatic close
+                autoCloseIsArmed = false;
                 // note: controlState gets switched in above case when WAIT_LOCK is actually over (both gates IDLE)
             }
 
@@ -288,21 +389,11 @@ void controlTask(void *param)
             // light barrier is no longer obstructed -> decide whether to restart
             else if (!lightBarrierIsObstructed(input))
             {
-                int timeRemaining = BARRIER_DELAY_BEFORE_RESTART_MS - (millis() - timestampLastBarrierChange);
+                const int32_t timeRemaining =
+                    (int32_t)BARRIER_DELAY_BEFORE_RESTART_MS - (int32_t)(millis() - timestampLastBarrierChange);
 
-                // --- Buzzer countdown ---
-                // calculate beep interval based on remaning time (beep faster when closer to start)
-                uint32_t beepInterval = BARRIER_BEEP_INTERVAL_MIN_MS +
-                                        (timeRemaining * (BARRIER_BEEP_INTERVAL_MAX_MS - BARRIER_BEEP_INTERVAL_MIN_MS)) /
-                                            BARRIER_DELAY_BEFORE_RESTART_MS;
-                // trigger next beep if due
-                if (millis() - timestampLastCountdownBeep >= beepInterval && timeRemaining > BARRIER_BEEP_INTERVAL_MIN_MS)
-                {
-                    uint32_t buzzerOnDuration = std::min(beepInterval, (uint32_t)70);
-                    ESP_LOGD(TAG_CTL, "remaining wait time: %d, current buzzer on-duration: %ld, triggering next beep...", timeRemaining, buzzerOnDuration);
-                    indicatorBeepCustom(1, buzzerOnDuration, 0); // trigger 1 beep no delay
-                    timestampLastCountdownBeep = millis();
-                }
+                // --- announce the restart ---
+                handleCountdownBeeps(timeRemaining, BARRIER_DELAY_BEFORE_RESTART_MS);
 
                 // --- continue movement ---
                 if (timeRemaining <= 0)
@@ -332,6 +423,60 @@ void controlTask(void *param)
             }
 
             break;
+
+            //-------------------------------
+            //------ WAIT_AUTO_CLOSE --------
+            //-------------------------------
+            // Gate stands open after the "let me through" gesture and closes again on its
+            // own once nobody is in the way any more.
+        case ControlState::WAIT_AUTO_CLOSE:
+        {
+            //--- close button: do not make the user wait out the rest of the hold time ---
+            if (input.closeButtonPressed || input.remoteClosePressed)
+            {
+                ESP_LOGW(TAG_CTL, "Close pressed while waiting to close automatically => closing now");
+                autoCloseIsArmed = false;
+                ctlState = startClosingGates(input, true);
+                break;
+            }
+
+            //--- open button: call the automatic close off, leave the gate open ---
+            if (input.openButtonPressed || input.remoteOpenPressed)
+            {
+                ESP_LOGW(TAG_CTL, "Open pressed while waiting to close automatically => cancelled, gate stays open");
+                autoCloseIsArmed = false;
+                indicatorBeep(BuzzerSignal::AUTO_CLOSE_CANCELLED);
+                ctlState = ControlState::IDLE;
+                break;
+            }
+
+            //--- somebody is still in the gateway -> keep it open and start over ---
+            // The hold time restarts as long as the barrier is interrupted, so the gate
+            // never begins to close while someone is standing in it.
+            if (lightBarrierIsObstructed(input))
+            {
+                timestampAutoCloseStart = millis();
+                break;
+            }
+
+            const int32_t timeRemaining =
+                (int32_t)AUTO_CLOSE_HOLD_OPEN_MS - (int32_t)(millis() - timestampAutoCloseStart);
+
+            //--- announce the close with the usual countdown ---
+            // Same accelerating beeps as when the gate resumes after the barrier cleared,
+            // so "it is about to move by itself" always sounds the same.
+            if (timeRemaining <= (int32_t)AUTO_CLOSE_COUNTDOWN_MS)
+                handleCountdownBeeps(timeRemaining, AUTO_CLOSE_COUNTDOWN_MS);
+
+            //--- hold time is over -> close ---
+            if (timeRemaining <= 0)
+            {
+                ESP_LOGW(TAG_CTL, "Hold-open time over -> closing automatically");
+                autoCloseIsArmed = false;
+                ctlState = startClosingGates(input, false);
+            }
+            break;
+        }
         } // end switch
 
 
@@ -342,6 +487,9 @@ void controlTask(void *param)
         {
         case ControlState::CLOSING_MOVEMENT_PAUSED:
             indicatorSetStatus(StatusIndication::WAITING_FOR_BARRIER);
+            break;
+        case ControlState::WAIT_AUTO_CLOSE:
+            indicatorSetStatus(StatusIndication::AUTO_CLOSE_PENDING);
             break;
         case ControlState::IDLE:
 #if SHOW_BARRIER_STATE_ON_LED_IN_IDLE

@@ -22,10 +22,13 @@ extern "C" {
 // (was gpio_evaluatedSwitch::minOnMs / minOffMs = 40 ms)
 #define BUTTON_DEBOUNCE_MS 40
 
-// How long the open button has to be held to count as 'open completely'.
+// How long the open button has to be held to count as a long press.
 // (was FULLY_OPEN_LONG_PRESS_DURATION_MS in control.cpp - the detection moved here so it
 //  no longer depends on how busy the control task is)
-#define OPEN_BUTTON_LONG_PRESS_MS 600
+// Raised from 600 ms: with the input task the measurement is exact, and control.cpp now
+// suspends its input timeout while the button is held, so a longer and more deliberate
+// hold costs nothing and separates the gestures more clearly.
+#define OPEN_BUTTON_LONG_PRESS_MS 800
 
 // The light barrier is treated asymmetrically on purpose:
 //  - 'obstructed' is accepted immediately, so nothing is ever slowed down by debouncing
@@ -65,6 +68,7 @@ static QueueHandle_t inputEventQueue = nullptr;
 // Levels published by the sampling task and read by the control task.
 // Plain scalars, written by exactly one task - std::atomic makes that explicit and
 // prevents the compiler from caching them across the control loop.
+static std::atomic<bool> openButtonIsHeld{false};
 static std::atomic<bool> closeButtonIsHeld{false};
 static std::atomic<bool> lightBarrierIsObstructed{false};
 
@@ -166,6 +170,7 @@ static void inputTask(void *param)
         }
 
         // 2. publish levels the control task needs directly
+        openButtonIsHeld.store(openButton.getIsPressed());
         closeButtonIsHeld.store(closeButton.getIsPressed());
 
         // 3. light barrier
@@ -231,6 +236,7 @@ InputState inputPoll()
     state.anyButtonPressed = state.openButtonPressed || state.closeButtonPressed ||
                              state.remoteOpenPressed || state.remoteClosePressed;
 
+    state.openButtonIsHeld = openButtonIsHeld.load();
     state.closeButtonIsHeld = closeButtonIsHeld.load();
     state.lightBarrierIsObstructed = lightBarrierIsObstructed.load();
 

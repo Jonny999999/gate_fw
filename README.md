@@ -84,30 +84,49 @@ idf.py flash
 
 
 # Usage
-See [function diagram](function-diagram.drawio.pdf) for a detailed overview of the implemented control.
 
-### Open slightly
-- press open button once -> opens for ~1s
+All gestures are on the **open button** unless noted otherwise. The buzzer confirms every
+one of them, so the gate can be operated without looking at it.
 
-### Open more
-- press open button several times with less than 1s gap  
-  -> opens 1s + 0.4s * times-pressed
+| Gesture | Result | Sound |
+|---|---|---|
+| **Open button, short press** | opens a small gap (~1.9 s of travel) | one short beep |
+| **Open button, press again** (while it is still waiting) | widens the gap by ~0.7 s per press | one very short beep per press |
+| **Open button, press and keep holding** | opens completely | one long tone |
+| **Open button: short press, then press and hold** | opens the small gap and **closes again by itself** after 20 s | one long tone, then two short ones |
+| **Close button** or **remote B** | closes completely | one long tone |
+| **Remote A** | opens completely | one long tone |
+| **Any button while a gate moves** | stops the movement | one medium tone |
 
-### Open completely
-- press open button for more than 0.8s
-or
-- press 'A-Button' on remote once
+The gate distinguishes "hold from the start" (open completely) from "short press, release,
+then hold" (open a gap and close behind me) - so the familiar full-open gesture is unchanged.
 
-### Close completely
-- press close button once  
-  or
-- press 'B-Button' on remote once
+### Let me through, then close behind me
+Short press, then press and hold. The gate opens the small gap, waits 20 seconds and closes
+again on its own.
 
-### Stop moving gate
-- press any button (on gate or remote) while a gate moves  
-Note: within 1s after pressing open button only close button or remote works to stop the gates
+- An accelerating beep countdown announces the closing, the same one the gate uses whenever
+  it starts moving by itself.
+- While the light barrier is interrupted the 20 seconds start over, so it never begins to
+  close while somebody is still standing in the gap.
+- Pressing **open** cancels it and leaves the gate open (two short beeps, then a long one).
+  Pressing **close** closes immediately instead of waiting.
+- The fault LED gives a short flash once per second while an automatic close is pending.
 
+### Fault LED
+The red LED keeps showing the last problem until the next movement is started. The blink
+rate says how serious it is - the faster, the more attention it needs:
 
+| Blink rate | Meaning |
+|---|---|
+| very fast (10/s) | VFD communication failed - the drives could not be reached |
+| fast (2.5/s) | movement timeout - a limit switch was not reached in time |
+| slow (1/s) | motor current too high - something was in the way while closing |
+| very slow (0.5/s) | the light barrier stayed blocked, the movement was given up |
+| short flash, long gap | no fault: an automatic close is pending |
+| steady on (while idle) | no fault: the light barrier is interrupted (useful for aligning it) |
+
+The green panel LED is wired in parallel with the buzzer and simply echoes the beeps.
 
 <br>
 
