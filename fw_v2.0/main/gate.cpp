@@ -1,5 +1,5 @@
 #include "gate.hpp"
-#include <esp_timer.h>
+#include "timing.hpp"
 
 
 
@@ -53,7 +53,7 @@ void Gate::startRelay() {
     if (!relayOn) {
         ESP_LOGI(name, "Turning relay on...");
         gpio_set_level(kRelayPinGpio, 1);
-        timestampRelayTurnedOnUs = esp_timer_get_time();
+        timestampRelayTurnedOnUs = micros();
         relayOn = true;
         //ESP_LOGI(name, "Waiting %d ms for VFD to boot up...", DELAY_VFD_STARTUP);
         //state = WAITING_FOR_VFD_STARTUP;
@@ -61,14 +61,14 @@ void Gate::startRelay() {
         //vTaskDelay(pdMS_TO_TICKS(DELAY_VFD_STARTUP));
         // note: optimized to not blocking delay, waiting in state WAITING_FOR_VFD_STARTUP
     }
-    lastActivityTimestampUs = esp_timer_get_time();
+    lastActivityTimestampUs = micros();
     relayTimeoutActive = false;
 }
 
 
 void Gate::softStopRelay() {
     relayTimeoutActive = true;
-    lastActivityTimestampUs = esp_timer_get_time();
+    lastActivityTimestampUs = micros();
     ESP_LOGI(name, "Relay soft stop initiated.");
 }
 
@@ -83,7 +83,7 @@ void Gate::forceStopRelay() {
 
 
 void Gate::updatePosition() {
-    uint64_t currentTimeUs = esp_timer_get_time();
+    uint64_t currentTimeUs = micros();
     uint64_t elapsed = currentTimeUs - lastPositionUpdateTimestampUs;
     float deltaPercent = (elapsed / (float)(runDurationMs * 1000)) * 100.0f;
     if (state == MOVING_OPENING) {
@@ -143,7 +143,7 @@ void Gate::startMovement(bool opening) {
     nextDirection = opening; // store target direction (used in case of waiting for VFD or when pause/resuming)
     // wait for the VFD to finish booting when the relay is off, or was switched on only just now
     // (note: timestampRelayTurnedOnUs is in microseconds, DELAY_VFD_STARTUP in milliseconds)
-    if (!relayOn || ((esp_timer_get_time() - timestampRelayTurnedOnUs) < (uint64_t)DELAY_VFD_STARTUP * 1000)) {
+    if (!relayOn || ((micros() - timestampRelayTurnedOnUs) < (uint64_t)DELAY_VFD_STARTUP * 1000)) {
         startRelay();
         ESP_LOGI(name, "Waiting %d ms for VFD to boot up in state WAITING_FOR_VFD_STARTUP first...", DELAY_VFD_STARTUP);
         state = WAITING_FOR_VFD_STARTUP;
@@ -167,7 +167,7 @@ void Gate::startMovement(bool opening) {
     // timestampStartUs BEFORE that was refreshed, i.e. from the previous movement, so the
     // first updatePosition() integrated the whole idle time in between and slammed the
     // position estimate to 0% / 100%.
-    timestampStartUs = esp_timer_get_time();
+    timestampStartUs = micros();
     lastPositionUpdateTimestampUs = timestampStartUs;
 
     if (opening) {
@@ -307,7 +307,7 @@ void Gate::pause() {
     const bool movementHadAlreadyStarted = (state == MOVING_OPENING || state == MOVING_CLOSING);
     //    while waiting for the VFD to boot the direction is only known via nextDirection
     wasOpeningBeforePause = movementHadAlreadyStarted ? (state == MOVING_OPENING) : nextDirection;
-    pauseStartTimestampUs = esp_timer_get_time();
+    pauseStartTimestampUs = micros();
 
     // 2. work out how much run time is left before the motor is switched off.
     //    If the motor never actually started (still waiting for the VFD), the full
@@ -377,7 +377,7 @@ void Gate::handle() {
     const bool limitSwitchClosedActive = checkLimitSwitchClosedActive();
     ESP_LOGV(name, "handle() - state=%s,  pos=%.2f, limitOpen=%d, limitClosed=%d", GateState_str[(int)state], positionPercent, limitSwitchOpenActive, limitSwitchClosedActive);
 
-    uint64_t currentTimeUs = esp_timer_get_time();
+    uint64_t currentTimeUs = micros();
 
     // Check for relay inactivity in idle states. TODO: verify in idle states?
     if (relayTimeoutActive && (currentTimeUs - lastActivityTimestampUs > kRelayInactivityTimeoutMs * 1000))
@@ -518,7 +518,7 @@ void Gate::handle() {
 
     case PAUSED_STATE:
         // exit paused state after certain timeout
-        if ((esp_timer_get_time() - pauseStartTimestampUs)/1000 > PAUSED_SWITCH_TO_IDLE_TIMEOUT_MS ){
+        if ((micros() - pauseStartTimestampUs)/1000 > PAUSED_SWITCH_TO_IDLE_TIMEOUT_MS ){
             ESP_LOGE(name, "exceeded max time in PAUSED_STATE (%d ms) -> switching to IDLE", PAUSED_SWITCH_TO_IDLE_TIMEOUT_MS/1000);
             state = IDLE_PARTIALLY_OPEN;
         }

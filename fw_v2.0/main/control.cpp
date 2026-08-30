@@ -1,6 +1,7 @@
 #include "control.hpp"
 #include "esp_log.h"
-#include "gpio_evaluateSwitch.hpp"
+#include "input.hpp"
+#include "timing.hpp"
 #include <stdlib.h>
 
 // TODO more delay in IDLE state / only fast when running?
@@ -9,9 +10,9 @@
 #define BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS 700 // V1: 400
 #define BUTTON_PRESS_INITIAL_OPEN_TIME_MS 1900    // V1: 1100
 
-// duration open button has to be pressed continously to trigger full open
-// note this must be smaller than the input timeout which is the min of the above two values
-#define FULLY_OPEN_LONG_PRESS_DURATION_MS 600
+// note: the 'open button held = open completely' threshold now lives in input.cpp
+// (OPEN_BUTTON_LONG_PRESS_MS), where it is evaluated by the input sampling task.
+// It must stay smaller than the input timeout, which is the min of the two values above.
 
 #define BARRIER_IS_IGNORED 0 // if 1 light-barrier is always considered free / not-obstructed
 #define BARRIER_DELAY_BEFORE_RESTART_MS 4000 // time after which movement is resumed after barrier is free again
@@ -64,29 +65,26 @@ static const char *TAG_CTL = "control";
 //===============================
 //========== Functions ==========
 //===============================
-// helper function to determine whether light-barrier is obstructed, also updates global timestampLastBarrierChange
-bool lightBarrierIsObstructed()
+// Light-barrier state as seen by the control logic.
+// The raw pin is sampled and debounced by the input task; this wrapper only tracks WHEN
+// the state last changed, because the control logic times its restart countdown from that
+// and deliberately resets it when entering the paused state.
+static bool lightBarrierIsObstructed(const InputState &input)
 {
-    // when ignoring the light barrier it is always considered free / not obstructed
 #if (BARRIER_IS_IGNORED)
+    (void)input;
     return false;
 #else
     static bool stateOld = false;
-    // when obstructed:
-    // - light barrier pulls 12V input to GND
-    // - optocoupler turns on -> pulls 3V3 to GND
-    bool stateNew = !(gpio_get_level(config->lightBarrierGpio));
-    // track last change
+    const bool stateNew = input.lightBarrierIsObstructed;
     if (stateNew != stateOld)
     {
-        // beep on change
         #if DEBUG_BARRIER_BEEP_ON_CHANGE
             config->buzzer->beep(1, 30, 0);
         #endif
-        // update changed timestamp
         ESP_LOGW(TAG_CTL, "Info: light-barrier changed state to '%s'", stateNew ? "obstructed" : "free");
         stateOld = stateNew;
-        timestampLastBarrierChange = esp_log_timestamp();
+        timestampLastBarrierChange = millis();
     }
     return stateNew;
 #endif
@@ -102,24 +100,27 @@ void controlTask(void *param)
     // extract parameters passed at task creation
     config = static_cast<ControlConfig *>(param);
 
-    // Initialize buttons with GPIOs from config
-    ESP_LOGI(TAG_CTL, "Initializing evaluated switch instances for buttons...");
-    gpio_evaluatedSwitch buttonOpen(config->buttonOpenGpio, false, false);
-    gpio_evaluatedSwitch buttonClose(config->buttonCloseGpio, false, false);
-    gpio_evaluatedSwitch remoteOpen(config->remoteOpenGpio, false, false);
-    gpio_evaluatedSwitch remoteClose(config->remoteCloseGpio, false, false);
-    gpio_set_direction(config->lightBarrierGpio, GPIO_MODE_INPUT);
+    // Start the dedicated input sampling task (buttons, remote, light barrier)
+    ESP_LOGI(TAG_CTL, "Starting input sampling task...");
+    const InputPinConfig inputPins = {
+        .openButtonGpio = config->buttonOpenGpio,
+        .closeButtonGpio = config->buttonCloseGpio,
+        .remoteOpenGpio = config->remoteOpenGpio,
+        .remoteCloseGpio = config->remoteCloseGpio,
+        .lightBarrierGpio = config->lightBarrierGpio,
+    };
+    inputStart(inputPins);
+
     gpio_set_direction(config->faultLedGpio, GPIO_MODE_OUTPUT);
     ESP_LOGI(TAG_CTL, "Control task started");
 
     // control loop
     while (true)
     {
-        // Handle button inputs
-        buttonOpen.handle();
-        buttonClose.handle();
-        remoteOpen.handle();
-        remoteClose.handle();
+        // Collect everything that happened since the previous iteration.
+        // Press events are queued by the input task, so none are lost even when the
+        // modbus calls further down block this loop for a few hundred milliseconds.
+        const InputState input = inputPoll();
 
         // State machine - control with button input according to current state
         switch (ctlState)
@@ -131,13 +132,13 @@ void controlTask(void *param)
         case ControlState::IDLE:
             //--- button/remote close ---
             // close gates completely
-            if (buttonClose.risingEdge || remoteClose.risingEdge)
+            if (input.closeButtonPressed || input.remoteClosePressed)
             {
                 ESP_LOGW(TAG_CTL, "%sclose Button pressed - Closing completely", 
-                    remoteClose.risingEdge ? "REMOTE-control " : "");
-                timestampLastAction = esp_log_timestamp();
+                    input.remoteClosePressed ? "REMOTE-control " : "");
+                timestampLastAction = millis();
                 config->buzzer->beep(1, 1000, 50);
-                if (lightBarrierIsObstructed()){
+                if (lightBarrierIsObstructed(input)){
                     // barrier is obstructed -> wait for clear in CLOSING_MOVEMENT_PAUSED state before starting
                     config->buzzer->beep(4, 50, 50);
                     ESP_LOGE(TAG_CTL, "Close command received but barrier currently obstructed saving close request -> switching to PAUSED");
@@ -153,19 +154,19 @@ void controlTask(void *param)
             }
             //--- button open ---
             // start opening, wait for further input
-            else if (buttonOpen.risingEdge)
+            else if (input.openButtonPressed)
             {
                 ESP_LOGW(TAG_CTL, "Opening (waiting for further input)");
                 config->buzzer->beep(1, 100, 0);
                 config->gateA->openCompletely();
                 config->gateB->openCompletely();
                 countPressed = 0;
-                timestampLastAction = esp_log_timestamp();
+                timestampLastAction = millis();
                 ctlState = ControlState::WAIT_FOR_INPUT;
             }
             //--- remote open ---
             // open gates completely
-            else if (remoteOpen.risingEdge)
+            else if (input.remoteOpenPressed)
             {
                 ESP_LOGW(TAG_CTL, "REMOTE: Opening completely");
                 config->buzzer->beep(1, 1000, 0);
@@ -176,7 +177,7 @@ void controlTask(void *param)
             //--- debug barrier ---
             // pass through light-barrier state to fault led for debugging
             #if DEBUG_BARRIER_PASSTHROUGH_LED_IN_IDLE
-                gpio_set_level(config->faultLedGpio, lightBarrierIsObstructed());
+                gpio_set_level(config->faultLedGpio, lightBarrierIsObstructed(input));
             #endif
 
             break;
@@ -188,7 +189,7 @@ void controlTask(void *param)
             //(decide what the user wants exactly while the gate already moves)
         case ControlState::WAIT_FOR_INPUT:
             //--- stop ---
-            if (buttonClose.state)
+            if (input.closeButtonIsHeld)
             { // close button is pressed while waiting for input
                 ESP_LOGW(TAG_CTL, "Close button while waiting for input -> stopping gates");
                 config->gateA->stop();
@@ -197,22 +198,22 @@ void controlTask(void *param)
                 ctlState = ControlState::IDLE;
             }
             //--- open completely ---
-            else if (buttonOpen.state && buttonOpen.msPressed > FULLY_OPEN_LONG_PRESS_DURATION_MS)
-            { // open button is pressed longer than 800ms
+            else if (input.openButtonLongPress)
+            { // open button held past the long-press threshold (detected by the input task)
                 ESP_LOGW(TAG_CTL, "long press -> Opening completely");
                 config->buzzer->beep(1, 1000, 0);
                 ctlState = ControlState::MOVING_TO_TARGET;
             }
             //--- increment open duration ---
-            else if (buttonOpen.risingEdge)
-            { // open button high again
+            else if (input.openButtonPressed)
+            { // open button pressed again
                 ESP_LOGI(TAG_CTL, "Additional press -> Incrementing open duration - total: %d", countPressed);
                 config->buzzer->beep(1, 60, 0);
                 countPressed++;
-                timestampLastAction = esp_log_timestamp();
+                timestampLastAction = millis();
             }
             //--- timeout ---
-            else if (esp_log_timestamp() - timestampLastAction > std::min(BUTTON_PRESS_INITIAL_OPEN_TIME_MS, BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS) - CONTROL_LOOP_HANDLE_DELAY_MS)
+            else if (millis() - timestampLastAction > std::min(BUTTON_PRESS_INITIAL_OPEN_TIME_MS, BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS) - CONTROL_LOOP_HANDLE_DELAY_MS)
             { // no input for more than almost the currently desired runtime
                 ESP_LOGW(TAG_CTL, "Timeout waiting for further input - applying target duration");
                 config->gateA->updateTargetRunTime(BUTTON_PRESS_INITIAL_OPEN_TIME_MS + (BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS * countPressed));
@@ -249,7 +250,7 @@ void controlTask(void *param)
                 ctlState = ControlState::IDLE;
             }
             //--- stop with any user input ---
-            else if (buttonClose.risingEdge || buttonOpen.risingEdge || remoteOpen.risingEdge || remoteClose.risingEdge) // any remote input or button is pressed while moving to target
+            else if (input.anyButtonPressed) // any remote input or button is pressed while moving to target
             {
                 ESP_LOGW(TAG_CTL, "User event received while moving => stopping movement");
                 config->gateA->stop();
@@ -259,7 +260,7 @@ void controlTask(void *param)
             }
 
             //--- light-barrier obstructed while closing ---
-            else if ((config->gateA->getIsClosing() || config->gateB->getIsClosing()) && lightBarrierIsObstructed())
+            else if ((config->gateA->getIsClosing() || config->gateB->getIsClosing()) && lightBarrierIsObstructed(input))
             {
                 config->buzzer->beep(4, 100, 50);
                 ESP_LOGE(TAG_CTL, "Lightbarrier got obstructed while a gate is closing => pausing movement");
@@ -267,7 +268,7 @@ void controlTask(void *param)
                 ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
                 // additionally manually reset timestamp so the timeout starts when entering the PAUSED mode 
                 // otherwise immediately timeouts when it was already active before pressing start button (e.g stand in gate some time and start)
-                timestampLastBarrierChange = esp_log_timestamp();
+                timestampLastBarrierChange = millis();
                 config->gateA->pause();
                 config->gateB->pause();
             }
@@ -279,7 +280,7 @@ void controlTask(void *param)
         case ControlState::CLOSING_MOVEMENT_PAUSED:
             // always blink fault led slowly while in CLOSING_MOVEMENT_PAUSED state
             #define LED_PAUSED_STATE_BLINK_INTERVAL 200
-            uint32_t now = esp_log_timestamp();
+            uint32_t now = millis();
             // toggle LED if interval passed
             if (now - timestampLastLedBlink >= LED_PAUSED_STATE_BLINK_INTERVAL)
             {
@@ -289,7 +290,7 @@ void controlTask(void *param)
             }
 
             // --- cancel pending movement at any user input ---
-            if (buttonClose.risingEdge || buttonOpen.risingEdge || remoteOpen.risingEdge || remoteClose.risingEdge)
+            if (input.anyButtonPressed)
             {
                 ESP_LOGW(TAG_CTL, "User event received while waiting for barrier => cancel pending movement");
                 config->gateA->cancel();
@@ -299,9 +300,9 @@ void controlTask(void *param)
                 ctlState = ControlState::IDLE;
             }
             // light barrier is no longer obstructed -> decide whether to restart
-            else if (!lightBarrierIsObstructed())
+            else if (!lightBarrierIsObstructed(input))
             {
-                int timeRemaining = BARRIER_DELAY_BEFORE_RESTART_MS - (esp_log_timestamp() - timestampLastBarrierChange);
+                int timeRemaining = BARRIER_DELAY_BEFORE_RESTART_MS - (millis() - timestampLastBarrierChange);
 
                 // --- Buzzer countdown ---
                 // calculate beep interval based on remaning time (beep faster when closer to start)
@@ -309,12 +310,12 @@ void controlTask(void *param)
                                         (timeRemaining * (BARRIER_BEEP_INTERVAL_MAX_MS - BARRIER_BEEP_INTERVAL_MIN_MS)) /
                                             BARRIER_DELAY_BEFORE_RESTART_MS;
                 // trigger next beep if due
-                if (esp_log_timestamp() - timestampLastCountdownBeep >= beepInterval && timeRemaining > BARRIER_BEEP_INTERVAL_MIN_MS)
+                if (millis() - timestampLastCountdownBeep >= beepInterval && timeRemaining > BARRIER_BEEP_INTERVAL_MIN_MS)
                 {
                     uint32_t buzzerOnDuration = std::min(beepInterval, (uint32_t)70);
                     ESP_LOGD(TAG_CTL, "remaining wait time: %d, current buzzer on-duration: %ld, triggering next beep...", timeRemaining, buzzerOnDuration);
                     config->buzzer->beep(1, buzzerOnDuration, 0); // trigger 1 beep no delay
-                    timestampLastCountdownBeep = esp_log_timestamp();
+                    timestampLastCountdownBeep = millis();
                 }
 
                 // --- continue movement ---
@@ -339,7 +340,7 @@ void controlTask(void *param)
                 }
             }
             // --- cancel movement entirely when obstructed for too long ---
-            else if ((esp_log_timestamp() - timestampLastBarrierChange) > BARRIER_WAIT_FOR_FREE_TIMEOUT_MS)
+            else if ((millis() - timestampLastBarrierChange) > BARRIER_WAIT_FOR_FREE_TIMEOUT_MS)
             {
                 ESP_LOGE(TAG_CTL, "Barrier obstructed longer than %d ms -> wont continue automatically after clearing the barrier -> switching to IDLE", BARRIER_WAIT_FOR_FREE_TIMEOUT_MS);
                 config->gateA->cancel();
