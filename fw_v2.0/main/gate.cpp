@@ -189,10 +189,10 @@ void Gate::runTo(float target) {
     // If target is 0 or 100, force full movement by using the full timeout.
     if (target <= 0.0f) {
         target = 0.0f;
-        targetRunTimeMs = kMovingTimeout;
+        targetRunTimeMs = getFullMovementRunTimeMs();
     } else if (target >= 100.0f) {
         target = 100.0f;
-        targetRunTimeMs = kMovingTimeout ;
+        targetRunTimeMs = getFullMovementRunTimeMs();
     } else {
         float delta = std::abs(target - positionPercent);
         targetRunTimeMs = (uint64_t)((delta / 100.0f) * runDurationMs );
@@ -229,7 +229,7 @@ void Gate::openCompletely() {
         ESP_LOGE(name, "Received open command, but Limit-switch-open (pos=%.1f%%) - can not open further...", positionPercent);
         return;
     }
-    targetRunTimeMs = runDurationMs + 5000; // ensure gate gets fully opened with running for longer than necessary (stops at limit switch)
+    targetRunTimeMs = getFullMovementRunTimeMs(); // run longer than necessary, the limit switch stops the movement
     startMovement(true);
 }
 
@@ -254,7 +254,7 @@ void Gate::closeCompletely() {
         ESP_LOGE(name, "Received close command, but Limit-switch-closed active and at %.1f%% - can not close further...", positionPercent);
         return;
     }
-    targetRunTimeMs = runDurationMs + 5000; // ensure gate gets fully closed with running for longer than necessary (stops at limit switch)
+    targetRunTimeMs = getFullMovementRunTimeMs(); // run longer than necessary, the limit switch stops the movement
     startMovement(false);
 }
 
@@ -395,7 +395,7 @@ void Gate::handle() {
     {
         updatePosition();
         // timeout
-        if ((currentTimeUs - timestampStartUs) >= (kMovingTimeout * 1000))
+        if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
         {
             ESP_LOGE(name, "Open movement timeout exceeded.");
             stop(false);
@@ -433,7 +433,7 @@ void Gate::handle() {
         #endif
 
         // timeout
-        if ((currentTimeUs - timestampStartUs) >= (kMovingTimeout * 1000))
+        if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
         {
             ESP_LOGE(name, "Close movement timeout exceeded.");
             stop(false);

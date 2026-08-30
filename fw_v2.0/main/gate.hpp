@@ -101,7 +101,21 @@ private:
     static constexpr float kDefaultVfdFrequency = 40.0f;  // Frequency (Hz) to use when running
     static constexpr float kCurrentLimitAmpere = DEFAULT_VFD_CURRENT_LIMIT;  // Max VFD current when closing for gate to stop
     static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
-    static constexpr uint32_t kMovingTimeout = 15e3;  // Max allowed time for continuous opening / closing movement without reaching limit
+
+    // Hard safety backstop: a movement that has not finished by then is aborted with an error.
+    // Deliberately left at the value that has been in service since V2.0.
+    static constexpr uint32_t kMovementTimeoutMs = 15000;
+
+    // Guaranteed gap between the target run time and the safety backstop.
+    // Previously 'runDurationMs + 5000' could equal or exceed kMovementTimeoutMs (exactly
+    // equal for the west gate), so a full movement that missed its limit switch hit the
+    // timeout branch at the very same instant and reported an error instead of simply
+    // stopping. (ROADMAP.md B11)
+    static constexpr uint32_t kMovementTimeoutMarginMs = 2000;
+
+    // How much longer than the measured travel time a full open/close is allowed to run,
+    // so the limit switch is definitely reached.
+    static constexpr uint32_t kFullMovementExtraTimeMs = 5000;
 
 
     const char* name;             // Gate name (used as the log tag)
@@ -152,6 +166,13 @@ private:
     void softStopRelay();
     void forceStopRelay();
     void updatePosition();
+
+    // Target run time for a full open / close: long enough to reach the limit switch,
+    // but always clearly below the safety backstop.
+    uint32_t getFullMovementRunTimeMs() const {
+        return std::min(runDurationMs + kFullMovementExtraTimeMs,
+                        kMovementTimeoutMs - kMovementTimeoutMarginMs);
+    };
     bool checkLimitSwitchOpenActive();
     bool checkLimitSwitchClosedActive();
     bool checkCurrentLimitExceeded();
