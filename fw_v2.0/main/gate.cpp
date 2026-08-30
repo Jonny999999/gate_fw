@@ -282,38 +282,68 @@ void Gate::stop(bool forceStatePartialOpen){ // default true
 
 
 // Public method: pause movement
+// Stops the motor but remembers direction and remaining run time, so resume() can
+// continue the same movement (used while the light barrier is obstructed).
 void Gate::pause() {
     if (getIsMoving() == false) {
         ESP_LOGE(name, "Pause requested, but gate is not moving.");
         return;
     }
     ESP_LOGW(name, "Pause requested, stopping gate...");
+
+    // 1. capture everything that describes the interrupted movement.
+    //    This MUST happen before stop(), because stop() overwrites state with
+    //    IDLE_PARTIALLY_OPEN - reading the direction afterwards always yielded false,
+    //    so resume() used to restart every paused movement in the CLOSING direction.
+    const bool movementHadAlreadyStarted = (state == MOVING_OPENING || state == MOVING_CLOSING);
+    //    while waiting for the VFD to boot the direction is only known via nextDirection
+    wasOpeningBeforePause = movementHadAlreadyStarted ? (state == MOVING_OPENING) : nextDirection;
+    pauseStartTimestampUs = esp_timer_get_time();
+
+    // 2. work out how much run time is left before the motor is switched off.
+    //    If the motor never actually started (still waiting for the VFD), the full
+    //    target run time is still ahead - timestampStartUs would still refer to the
+    //    PREVIOUS movement here.
+    if (!movementHadAlreadyStarted) {
+        remainingRunTimeAtPauseMs = targetRunTimeMs;
+    } else {
+        const uint64_t elapsedSinceStartUs = pauseStartTimestampUs - timestampStartUs;
+        const uint64_t targetRunTimeUs = targetRunTimeMs * 1000;
+        remainingRunTimeAtPauseMs = (targetRunTimeUs > elapsedSinceStartUs)
+                                        ? (targetRunTimeUs - elapsedSinceStartUs) / 1000
+                                        : 0;
+    }
+
+    // 3. record the position reached so far, then stop
     updatePosition();  // Record accurate position before pausing
     stop();
-    wasOpeningBeforePause = (state == MOVING_OPENING);
     state = PAUSED_STATE;
-    pauseStartTimestampUs = esp_timer_get_time();
     softStopRelay();
-    ESP_LOGW(name, "Gate PAUSED. Remaining time to target: %llu ms", 
-             (targetRunTimeMs * 1000 - (pauseStartTimestampUs - timestampStartUs)) / 1000);
+
+    ESP_LOGW(name, "Gate PAUSED while %s. Remaining time to target: %llu ms",
+             wasOpeningBeforePause ? "OPENING" : "CLOSING", remainingRunTimeAtPauseMs);
 }
 
 // Public method: resume movement
+// Continues the movement that pause() interrupted, for the remaining run time.
 void Gate::resume() {
     if (state != PAUSED_STATE) {
         ESP_LOGW(name, "Resume requested, but gate is not paused -> ignoring");
         return;
     }
-    uint64_t currentTimeUs = esp_timer_get_time();
-    uint64_t elapsedSinceStart = pauseStartTimestampUs - timestampStartUs;
-    targetRunTimeMs = (targetRunTimeMs * 1000 - elapsedSinceStart) / 1000;
-    if (targetRunTimeMs <= 0) {
+
+    // note: the remaining run time was calculated in pause() - recomputing it here from
+    // targetRunTimeMs would underflow (unsigned!) whenever the elapsed time already
+    // exceeded the target, resulting in an enormous run time instead of a stop.
+    if (remainingRunTimeAtPauseMs == 0) {
         ESP_LOGW(name, "No remaining run time, cannot resume -> switching to idle");
-        stop(false);
         state = IDLE_PARTIALLY_OPEN;
         return;
     }
-    ESP_LOGI(name, "Resuming gate movement. Remaining target run time: %llu ms", targetRunTimeMs);
+
+    targetRunTimeMs = remainingRunTimeAtPauseMs;
+    ESP_LOGI(name, "Resuming gate movement (%s). Remaining target run time: %llu ms",
+             wasOpeningBeforePause ? "OPENING" : "CLOSING", targetRunTimeMs);
     startMovement(wasOpeningBeforePause);
 }
 

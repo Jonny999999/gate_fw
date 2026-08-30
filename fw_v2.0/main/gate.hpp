@@ -132,6 +132,7 @@ private:
     // Variables for pause/resume support
     bool wasOpeningBeforePause = false;
     uint64_t pauseStartTimestampUs = 0;
+    uint64_t remainingRunTimeAtPauseMs = 0; // run time left when pause() was called (0 = target already reached)
 
     // Private helper methods.
     void startRelay();
