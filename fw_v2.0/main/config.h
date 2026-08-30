@@ -45,8 +45,13 @@
 //============================
 #define CONFIG_SERVO_ENABLE_GPIO    GPIO_NUM_12  // P-MOSFET Enable supply for Servo (outputs 12V when HIGH)
 #define CONFIG_LIGHTBARRIER_EN_GPIO GPIO_NUM_14  // P-MOSFET Enable supply for Light Barrier (outputs 12V-filtered when HIGH)
-#define CONFIG_LED_GPIO             GPIO_NUM_13  // Status LED (outputs GND when HIGH)
+#define CONFIG_FAULT_LED_GPIO       GPIO_NUM_13  // RED LED labelled "Fault" on the control panel (outputs GND when HIGH)
 #define CONFIG_BUZZER_GPIO          GPIO_NUM_27  // Buzzer (on when HIGH)
+// note: the GREEN LED on the control panel is wired in PARALLEL with the buzzer, so it
+//       cannot be controlled separately. The ULN2003 (U1) does have a seventh channel left,
+//       but it is unused by design: input pin 7 is tied to GND and output pin 10 (O7) goes
+//       to no screw terminal. Driving the green LED individually is a hardware change
+//       (free GPIO -> isolator -> U1 pin 7, and U1 pin 10 -> a terminal), not a firmware one.
 #define CONFIG_RELAY_VFD1_GPIO      GPIO_NUM_25  // Relay for VFD1 (turns Relay on when HIGH)
 #define CONFIG_RELAY_VFD2_GPIO      GPIO_NUM_26  // Relay for VFD2 (turns Relay on when HIGH)
 #define CONFIG_SERVO_PWM_GPIO       GPIO_NUM_33  // Servo PWM Signal (non inverting, outputs 5V when HIGH, pulls to GND when LOW)

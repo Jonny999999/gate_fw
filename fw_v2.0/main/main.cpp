@@ -13,7 +13,7 @@ extern "C" {
 }
 
 #include "vfd.hpp"
-#include "buzzer.hpp"
+#include "indicator.hpp"
 #include "gate.hpp"
 #include "gate_task.hpp"
 
@@ -21,21 +21,6 @@ extern "C" {
 
 
 static const char *TAG = "main";
-//create buzzer object 
-// configured with 0ms gap between beep events
-buzzer_t buzzer(CONFIG_BUZZER_GPIO, 0);
-
-//======================================
-//============ buzzer task =============
-//======================================
-//TODO: move the task creation to buzzer class (buzzer.cpp)
-//e.g. only have function buzzer.createTask() in app_main
-void task_buzzer( void * pvParameters ){
-    ESP_LOGI("task_buzzer", "Start of buzzer task...");
-        //run function that waits for a beep events to arrive in the queue
-        //and processes them
-        buzzer.processQueue();
-}
 
 // Configure all GPIO pins according to config.h
 void configure_gpio_pins() {
@@ -70,7 +55,7 @@ void configure_gpio_pins() {
     uint64_t output_pins = 
         (1ULL << CONFIG_SERVO_ENABLE_GPIO) |
         (1ULL << CONFIG_LIGHTBARRIER_EN_GPIO) |
-        (1ULL << CONFIG_LED_GPIO) |
+        (1ULL << CONFIG_FAULT_LED_GPIO) |
         (1ULL << CONFIG_BUZZER_GPIO) |
         (1ULL << CONFIG_RELAY_VFD1_GPIO) |
         (1ULL << CONFIG_RELAY_VFD2_GPIO) |
@@ -107,14 +92,18 @@ extern "C" void app_main(void)
     esp_log_level_set("VFD", ESP_LOG_INFO);
     esp_log_level_set("Gate1_West", ESP_LOG_INFO);
     esp_log_level_set("Gate2_East", ESP_LOG_INFO);
-    esp_log_level_set("buzzer", ESP_LOG_ERROR);
+    esp_log_level_set("indicator", ESP_LOG_WARN);
     esp_log_level_set("control", ESP_LOG_INFO);
     esp_log_level_set("gateTask", ESP_LOG_INFO);
     esp_log_level_set("input", ESP_LOG_INFO);
 
-    //=== 3. buzzer ===
-    xTaskCreate(&task_buzzer, "task_buzzer", 2048, NULL, 5, NULL);
-    buzzer.beep(3, 50, 100); // beep at startup
+    //=== 3. buzzer + fault LED ===
+    const IndicatorPinConfig indicatorPins = {
+        .buzzerGpio = CONFIG_BUZZER_GPIO,
+        .faultLedGpio = CONFIG_FAULT_LED_GPIO,
+    };
+    indicatorStart(indicatorPins);
+    indicatorBeep(BuzzerSignal::STARTUP);
 
 #if RUN_GPIO_TEST
     ESP_LOGW(TAG, "RUN_GPIO_TEST is enabled - not starting the gate control!");
@@ -137,7 +126,7 @@ extern "C" void app_main(void)
 
     //=== 5. gates ===
     // Parameters: name, limit switch open (gpio, active level), limit switch closed
-    //             (gpio, active level), VFD supply relay gpio, VFD, buzzer,
+    //             (gpio, active level), VFD supply relay gpio, VFD,
     //             full run duration 0% -> 100% in ms
     //
     // Measured full run durations (at 50 Hz, VFD start setting 7):
@@ -147,7 +136,6 @@ extern "C" void app_main(void)
                CONFIG_SW_G1_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
                CONFIG_RELAY_VFD1_GPIO,
                &vfd1,
-               &buzzer,
                9000 + 1000);
 
     static Gate gate2East("Gate2_East",
@@ -155,7 +143,6 @@ extern "C" void app_main(void)
                CONFIG_SW_G2_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
                CONFIG_RELAY_VFD2_GPIO,
                &vfd2,
-               &buzzer,
                10000 + 1000);
 
     //=== 6. tasks ===
@@ -168,9 +155,7 @@ extern "C" void app_main(void)
         .remoteCloseGpio = CONFIG_REMOTE_CLOSE_GPIO,
         .buttonOpenGpio = CONFIG_BTN_OPEN_GPIO,
         .buttonCloseGpio = CONFIG_BTN_CLOSE_GPIO,
-        .faultLedGpio = CONFIG_LED_GPIO,
         .lightBarrierGpio = CONFIG_LIGHTBARRIER_GPIO,
-        .buzzer = &buzzer
     };
     xTaskCreate(controlTask, "ControlTask", 4096 * 2, (void *)&controlConfig, 5, nullptr);
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "buzzer.hpp"
 #include "config.h"
 #include "driver/gpio.h"
 
@@ -18,11 +17,9 @@ struct ControlConfig {
     gpio_num_t remoteCloseGpio;
     gpio_num_t buttonOpenGpio;
     gpio_num_t buttonCloseGpio;
-    gpio_num_t faultLedGpio;
     gpio_num_t lightBarrierGpio;
-    buzzer_t* buzzer;
 };
 
 // Function to initialize and start the control task
-// note: gateTaskStart() has to be called before this
+// note: gateTaskStart() and indicatorStart() have to be called before this
 void controlTask(void* param);

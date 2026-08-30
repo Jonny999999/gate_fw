@@ -1,6 +1,7 @@
 #include "control.hpp"
 #include "esp_log.h"
 #include "gate_task.hpp"
+#include "indicator.hpp"
 #include "input.hpp"
 #include "timing.hpp"
 #include <stdlib.h>
@@ -21,8 +22,8 @@
 #define BARRIER_BEEP_INTERVAL_MAX_MS 1000 // interval buzzer beeps when barrier just freed
 #define BARRIER_BEEP_INTERVAL_MIN_MS 20  // interval buzzer beeps when movement is due
 
-#define DEBUG_BARRIER_PASSTHROUGH_LED_IN_IDLE 1
-#define DEBUG_BARRIER_BEEP_ON_CHANGE 0
+#define SHOW_BARRIER_STATE_ON_LED_IN_IDLE 1
+#define DEBUG_BARRIER_BEEP_ON_CHANGE 0 // beep on every light-barrier change (sensor debugging)
 
 
 //===============================
@@ -49,12 +50,9 @@ static uint8_t countPressed = 0;
 // light barrier
 static uint32_t timestampLastBarrierChange = 0;
 static uint32_t timestampLastCountdownBeep;
+static bool barrierIsObstructedWhileIdle = false; // updated in IDLE, shown on the LED
 
-// fault-led handling
-uint32_t timestampLastLedBlink = 0;
-bool ledBlinkState = false;
-
-// gate + buzzer objects and GPIO assignment passed from main
+// GPIO assignment passed from main
 ControlConfig *config;
 
 // logging
@@ -81,7 +79,7 @@ static bool lightBarrierIsObstructed(const InputState &input)
     if (stateNew != stateOld)
     {
         #if DEBUG_BARRIER_BEEP_ON_CHANGE
-            config->buzzer->beep(1, 30, 0);
+            indicatorBeepCustom(1, 30, 0);
         #endif
         ESP_LOGW(TAG_CTL, "Info: light-barrier changed state to '%s'", stateNew ? "obstructed" : "free");
         stateOld = stateNew;
@@ -112,7 +110,6 @@ void controlTask(void *param)
     };
     inputStart(inputPins);
 
-    gpio_set_direction(config->faultLedGpio, GPIO_MODE_OUTPUT);
     ESP_LOGI(TAG_CTL, "Control task started");
 
     // control loop
@@ -138,19 +135,24 @@ void controlTask(void *param)
                 ESP_LOGW(TAG_CTL, "%sclose Button pressed - Closing completely", 
                     input.remoteClosePressed ? "REMOTE-control " : "");
                 timestampLastAction = millis();
-                config->buzzer->beep(1, 1000, 50);
+                indicatorBeep(BuzzerSignal::MOVEMENT_START_WARNING);
                 if (lightBarrierIsObstructed(input)){
                     // barrier is obstructed -> wait for clear in CLOSING_MOVEMENT_PAUSED state before starting
-                    config->buzzer->beep(4, 50, 50);
+                    indicatorBeep(BuzzerSignal::BARRIER_BLOCKED);
                     ESP_LOGE(TAG_CTL, "Close command received but barrier currently obstructed saving close request -> switching to PAUSED");
+                    // start the obstruction timeout now, not from whenever the barrier was
+                    // last interrupted - otherwise pressing close while already standing in
+                    // the barrier times out immediately
+                    // (the MOVING_TO_TARGET -> PAUSED path below does the same)
+                    timestampLastBarrierChange = millis();
                     ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
                 } else {
                     // barrier not obstructed -> close immediately
                     gateSendCommand(GateCommandType::CLOSE_COMPLETELY);
                     ctlState = ControlState::MOVING_TO_TARGET;
-                    // clear fault led (indicates previous error during last run)
+                    // a new movement clears the indication of the previous one
                     clearGateErrors();
-                    gpio_set_level(config->faultLedGpio, 0);
+                    indicatorClearFault();
                 }
             }
             //--- button open ---
@@ -158,10 +160,10 @@ void controlTask(void *param)
             else if (input.openButtonPressed)
             {
                 ESP_LOGW(TAG_CTL, "Opening (waiting for further input)");
-                config->buzzer->beep(1, 100, 0);
+                indicatorBeep(BuzzerSignal::BUTTON_ACKNOWLEDGED);
                 gateSendCommand(GateCommandType::OPEN_COMPLETELY);
                 clearGateErrors();
-                gpio_set_level(config->faultLedGpio, 0);
+                indicatorClearFault();
                 countPressed = 0;
                 timestampLastAction = millis();
                 ctlState = ControlState::WAIT_FOR_INPUT;
@@ -171,17 +173,16 @@ void controlTask(void *param)
             else if (input.remoteOpenPressed)
             {
                 ESP_LOGW(TAG_CTL, "REMOTE: Opening completely");
-                config->buzzer->beep(1, 1000, 0);
+                indicatorBeep(BuzzerSignal::MOVEMENT_START_WARNING);
                 gateSendCommand(GateCommandType::OPEN_COMPLETELY);
                 clearGateErrors();
-                gpio_set_level(config->faultLedGpio, 0);
+                indicatorClearFault();
                 ctlState = ControlState::MOVING_TO_TARGET;
             }
-            //--- debug barrier ---
-            // pass through light-barrier state to fault led for debugging
-            #if DEBUG_BARRIER_PASSTHROUGH_LED_IN_IDLE
-                gpio_set_level(config->faultLedGpio, lightBarrierIsObstructed(input));
-            #endif
+            //--- keep tracking the barrier while idle ---
+            // (the call also maintains timestampLastBarrierChange, and the LED indication
+            //  is derived from the control state at the end of the loop)
+            barrierIsObstructedWhileIdle = lightBarrierIsObstructed(input);
 
             break;
 
@@ -196,21 +197,21 @@ void controlTask(void *param)
             { // close button is pressed while waiting for input
                 ESP_LOGW(TAG_CTL, "Close button while waiting for input -> stopping gates");
                 gateSendCommand(GateCommandType::STOP);
-                config->buzzer->beep(1, 400, 0);
+                indicatorBeep(BuzzerSignal::MOVEMENT_STOPPED);
                 ctlState = ControlState::IDLE;
             }
             //--- open completely ---
             else if (input.openButtonLongPress)
             { // open button held past the long-press threshold (detected by the input task)
                 ESP_LOGW(TAG_CTL, "long press -> Opening completely");
-                config->buzzer->beep(1, 1000, 0);
+                indicatorBeep(BuzzerSignal::MOVEMENT_START_WARNING);
                 ctlState = ControlState::MOVING_TO_TARGET;
             }
             //--- increment open duration ---
             else if (input.openButtonPressed)
             { // open button pressed again
                 ESP_LOGI(TAG_CTL, "Additional press -> Incrementing open duration - total: %d", countPressed);
-                config->buzzer->beep(1, 60, 0);
+                indicatorBeep(BuzzerSignal::ADDITIONAL_PRESS);
                 countPressed++;
                 timestampLastAction = millis();
             }
@@ -223,7 +224,7 @@ void controlTask(void *param)
 
                 if (countPressed > 1)
                 {
-                    config->buzzer->beep(2, 40, 20);
+                    indicatorBeep(BuzzerSignal::OPEN_FURTHER_CONFIRMED);
                 }
 
                 ctlState = ControlState::MOVING_TO_TARGET;
@@ -237,14 +238,9 @@ void controlTask(void *param)
             // or reset to idle when gates have stopped
         case ControlState::MOVING_TO_TARGET:
             // if any gate entered error state during this handle run, turn on fault led
-            if (anyGateHadError())
-            {
-                // note: the flag is latched by the Gate, because ERROR_STATE itself only
-                // lasts a single handle() cycle and would otherwise be missed from here
-                ESP_LOGE(TAG_CTL, "At least one gate reported an error, turning on fault led...");
-                gpio_set_level(config->faultLedGpio, 1);
-                // note: led and latch are reset at the next start event
-            }
+            // note: a gate that runs into an error also sets the matching fault code on
+            // the indicator itself, so nothing has to be done here - the LED keeps showing
+            // it until the next start command clears it.
 
             //--- idle when gates stopped at target or timeout ---
             if (gatesAreIdle())
@@ -257,16 +253,15 @@ void controlTask(void *param)
             {
                 ESP_LOGW(TAG_CTL, "User event received while moving => stopping movement");
                 gateSendCommand(GateCommandType::STOP);
-                config->buzzer->beep(1, 400, 0);
+                indicatorBeep(BuzzerSignal::MOVEMENT_STOPPED);
                 // note: controlState gets switched in above case when WAIT_LOCK is actually over (both gates IDLE)
             }
 
             //--- light-barrier obstructed while closing ---
             else if (anyGateIsClosing() && lightBarrierIsObstructed(input))
             {
-                config->buzzer->beep(4, 100, 50);
+                indicatorBeep(BuzzerSignal::BARRIER_BLOCKED);
                 ESP_LOGE(TAG_CTL, "Lightbarrier got obstructed while a gate is closing => pausing movement");
-                gpio_set_level(config->faultLedGpio, 1);
                 ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
                 // additionally manually reset timestamp so the timeout starts when entering the PAUSED mode 
                 // otherwise immediately timeouts when it was already active before pressing start button (e.g stand in gate some time and start)
@@ -279,24 +274,15 @@ void controlTask(void *param)
             //------ CLOSING_MOVEMENT_PAUSED ------
             //-------------------------------------
         case ControlState::CLOSING_MOVEMENT_PAUSED:
-            // always blink fault led slowly while in CLOSING_MOVEMENT_PAUSED state
-            #define LED_PAUSED_STATE_BLINK_INTERVAL 200
-            uint32_t now = millis();
-            // toggle LED if interval passed
-            if (now - timestampLastLedBlink >= LED_PAUSED_STATE_BLINK_INTERVAL)
-            {
-                ledBlinkState = !ledBlinkState;
-                gpio_set_level(config->faultLedGpio, ledBlinkState);
-                timestampLastLedBlink = now;
-            }
+            // note: the blinking LED for this state is driven by the indicator task,
+            // requested once when the state was entered (StatusIndication::WAITING_FOR_BARRIER)
 
             // --- cancel pending movement at any user input ---
             if (input.anyButtonPressed)
             {
                 ESP_LOGW(TAG_CTL, "User event received while waiting for barrier => cancel pending movement");
                 gateSendCommand(GateCommandType::CANCEL);
-                config->buzzer->beep(1, 1000, 0);
-                gpio_set_level(config->faultLedGpio, 0); // turn off fault led
+                indicatorBeep(BuzzerSignal::MOVEMENT_STOPPED);
                 ctlState = ControlState::IDLE;
             }
             // light barrier is no longer obstructed -> decide whether to restart
@@ -314,7 +300,7 @@ void controlTask(void *param)
                 {
                     uint32_t buzzerOnDuration = std::min(beepInterval, (uint32_t)70);
                     ESP_LOGD(TAG_CTL, "remaining wait time: %d, current buzzer on-duration: %ld, triggering next beep...", timeRemaining, buzzerOnDuration);
-                    config->buzzer->beep(1, buzzerOnDuration, 0); // trigger 1 beep no delay
+                    indicatorBeepCustom(1, buzzerOnDuration, 0); // trigger 1 beep no delay
                     timestampLastCountdownBeep = millis();
                 }
 
@@ -328,7 +314,6 @@ void controlTask(void *param)
                     gateSendCommand(GateCommandType::CONTINUE_CLOSING);
 
                     ctlState = ControlState::MOVING_TO_TARGET;
-                    gpio_set_level(config->faultLedGpio, 0); // turn off fault led
                 }
             }
             // --- cancel movement entirely when obstructed for too long ---
@@ -336,9 +321,9 @@ void controlTask(void *param)
             {
                 ESP_LOGE(TAG_CTL, "Barrier obstructed longer than %d ms -> wont continue automatically after clearing the barrier -> switching to IDLE", BARRIER_WAIT_FOR_FREE_TIMEOUT_MS);
                 gateSendCommand(GateCommandType::CANCEL);
-                config->buzzer->beep(1, 1000, 0);
+                indicatorBeep(BuzzerSignal::MOVEMENT_STOPPED);
+                indicatorSetFault(FaultCode::BARRIER_BLOCKED_TOO_LONG);
                 ctlState = ControlState::IDLE;
-                gpio_set_level(config->faultLedGpio, 1); // turn on fault led
             }
             // --- debug log ---
             else
@@ -349,6 +334,28 @@ void controlTask(void *param)
             break;
         } // end switch
 
+
+        //--- keep the LED status indication in sync with the control state ---
+        // Derived in one place instead of being set at every transition, so it can not get
+        // out of sync. A latched fault outranks this in the indicator task.
+        switch (ctlState)
+        {
+        case ControlState::CLOSING_MOVEMENT_PAUSED:
+            indicatorSetStatus(StatusIndication::WAITING_FOR_BARRIER);
+            break;
+        case ControlState::IDLE:
+#if SHOW_BARRIER_STATE_ON_LED_IN_IDLE
+            // handy when aligning the sensor
+            indicatorSetStatus(barrierIsObstructedWhileIdle ? StatusIndication::BARRIER_OBSTRUCTED
+                                                            : StatusIndication::IDLE);
+#else
+            indicatorSetStatus(StatusIndication::IDLE);
+#endif
+            break;
+        default:
+            indicatorSetStatus(StatusIndication::IDLE);
+            break;
+        }
 
         // note: the gates are stepped by their own task (gate_task.cpp), so this loop
         // now really runs at CONTROL_LOOP_HANDLE_DELAY_MS and never blocks on modbus

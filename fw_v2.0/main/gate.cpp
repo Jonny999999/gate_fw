@@ -23,7 +23,6 @@ Gate::Gate(const char *name,
            bool kLimitSwitchClosed_ActiveLevel,
            gpio_num_t kRelayPinGpio,
            VFD *vfd,
-           buzzer_t *buzzer,
            uint32_t runDurationMs) : name(name),
                                      kLimitSwitchOpenGpio(kLimitSwitchOpenGpio),
                                      kLimitSwitchOpen_ActiveLevel(kLimitSwitchOpen_ActiveLevel),
@@ -31,7 +30,6 @@ Gate::Gate(const char *name,
                                      kLimitSwitchClosed_ActiveLevel(kLimitSwitchClosed_ActiveLevel),
                                      kRelayPinGpio(kRelayPinGpio),
                                      vfd(vfd),
-                                     buzzer(buzzer),
                                      runDurationMs(runDurationMs),
 
                                      state(IDLE_FULLY_CLOSED), relayTimeoutActive(false), relayOn(false), positionPercent(0.0f)
@@ -155,7 +153,8 @@ void Gate::startMovement(bool opening) {
     #ifndef IGNORE_VFD_ERROR
     if (err != ESP_OK) {
         ESP_LOGE(name, "VFD starting failed! switching to ERROR_STATE");
-        buzzer->beep(5, 70, 100);
+        indicatorBeep(BuzzerSignal::FAULT);
+        indicatorSetFault(FaultCode::VFD_COMMUNICATION);
         // switch to ERROR state to prevent infinite loop of retries
         state = ERROR_STATE;
         errorLatched = true;
@@ -273,14 +272,14 @@ void Gate::stop(bool forceStatePartialOpen){ // default true
     #ifndef IGNORE_VFD_ERROR
     if (err != ESP_OK) {
         ESP_LOGE(name, "VFD stop failed! -> forcing relay off");
-        buzzer->beep(5, 70, 100);
+        indicatorBeep(BuzzerSignal::FAULT);
+        indicatorSetFault(FaultCode::VFD_COMMUNICATION);
         forceStopRelay();
         state = ERROR_STATE;
         errorLatched = true;
         return;
     }
     #endif
-    // buzzer->beep(1, 100, 200);
     softStopRelay();
 
     // by default set state to partially open, when stopped due to limit switch the state is set manually
@@ -398,6 +397,7 @@ void Gate::handle() {
         if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
         {
             ESP_LOGE(name, "Open movement timeout exceeded.");
+            indicatorSetFault(FaultCode::MOVEMENT_TIMEOUT);
             stop(false);
             state = ERROR_STATE;
             errorLatched = true;
@@ -436,6 +436,7 @@ void Gate::handle() {
         if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
         {
             ESP_LOGE(name, "Close movement timeout exceeded.");
+            indicatorSetFault(FaultCode::MOVEMENT_TIMEOUT);
             stop(false);
             state = ERROR_STATE;
             errorLatched = true;
@@ -461,7 +462,8 @@ void Gate::handle() {
         else if (checkCurrentLimitExceeded()){
             ESP_LOGE(name, "Max vfd current exceeded while closing! stopping");
             stop(false);
-            buzzer->beep(1, 1500, 100);
+            indicatorBeep(BuzzerSignal::OBSTRUCTION_DETECTED);
+            indicatorSetFault(FaultCode::OBSTRUCTION);
             state = ERROR_STATE;
             errorLatched = true;
         }
@@ -476,7 +478,7 @@ void Gate::handle() {
             positionPercent = 99;
             ESP_LOGI(name, "Gate moved away from fully open position -> switching to IDLE_PARTIALLY_OPEN");
             #ifdef BEEP_AT_LIMIT_SW_CHANGE
-            buzzer->beep(1, 100, 50);
+            indicatorBeep(BuzzerSignal::LIMIT_SWITCH_REACHED);
             #endif
         }
         break;
@@ -488,7 +490,7 @@ void Gate::handle() {
             positionPercent = 1;
             ESP_LOGW(name, "Gate moved away from fully closed position while off -> switching to IDLE_PARTIALLY_OPEN");
             #ifdef BEEP_AT_LIMIT_SW_CHANGE
-            buzzer->beep(1, 100, 50);
+            indicatorBeep(BuzzerSignal::LIMIT_SWITCH_REACHED);
             #endif
         }
         break;
@@ -500,7 +502,7 @@ void Gate::handle() {
             positionPercent = 100.0f;
             ESP_LOGW(name, "Gate reached fully open position while off -> switching to IDLE_FULLY_OPEN");
             #ifdef BEEP_AT_LIMIT_SW_CHANGE
-            buzzer->beep(1, 100, 50);
+            indicatorBeep(BuzzerSignal::LIMIT_SWITCH_REACHED);
             #endif
 
         }
@@ -510,7 +512,7 @@ void Gate::handle() {
             positionPercent = 0.0f;
             ESP_LOGW(name, "Gate reached fully closed position while off -> switching to IDLE_FULLY_CLOSED");
             #ifdef BEEP_AT_LIMIT_SW_CHANGE
-            buzzer->beep(1, 100, 50);
+            indicatorBeep(BuzzerSignal::LIMIT_SWITCH_REACHED);
             #endif
         }
         break;

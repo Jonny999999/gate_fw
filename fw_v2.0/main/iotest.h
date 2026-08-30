@@ -36,7 +36,7 @@ void ioTest_setAllOutputsHigh() {
     ESP_LOGI(TAG_iotest, "Turning all outputs ON...");
     gpio_set_level(CONFIG_SERVO_ENABLE_GPIO, 1);
     gpio_set_level(CONFIG_LIGHTBARRIER_EN_GPIO, 1);
-    gpio_set_level(CONFIG_LED_GPIO, 1);
+    gpio_set_level(CONFIG_FAULT_LED_GPIO, 1);
     gpio_set_level(CONFIG_BUZZER_GPIO, 1);
     gpio_set_level(CONFIG_RELAY_VFD1_GPIO, 1);
     gpio_set_level(CONFIG_RELAY_VFD2_GPIO, 1);
@@ -49,7 +49,7 @@ void ioTest_setAllOutputsLow() {
     ESP_LOGI(TAG_iotest, "Turning all outputs OFF...");
     gpio_set_level(CONFIG_SERVO_ENABLE_GPIO, 0);
     gpio_set_level(CONFIG_LIGHTBARRIER_EN_GPIO, 0);
-    gpio_set_level(CONFIG_LED_GPIO, 0);
+    gpio_set_level(CONFIG_FAULT_LED_GPIO, 0);
     gpio_set_level(CONFIG_BUZZER_GPIO, 0);
     gpio_set_level(CONFIG_RELAY_VFD1_GPIO, 0);
     gpio_set_level(CONFIG_RELAY_VFD2_GPIO, 0);
@@ -65,5 +65,5 @@ void ioTest_setOutputsToInputStates() {
     gpio_set_level(CONFIG_BUZZER_GPIO, !gpio_get_level(CONFIG_BTN_OPEN_GPIO));
     gpio_set_level(CONFIG_LIGHTBARRIER_EN_GPIO, !gpio_get_level(CONFIG_BTN_CLOSE_GPIO));
     gpio_set_level(CONFIG_SERVO_ENABLE_GPIO, !gpio_get_level(CONFIG_ENCODER1_GPIO));
-    gpio_set_level(CONFIG_LED_GPIO, !gpio_get_level(CONFIG_SW_G1_OPEN_GPIO));
+    gpio_set_level(CONFIG_FAULT_LED_GPIO, !gpio_get_level(CONFIG_SW_G1_OPEN_GPIO));
 }

@@ -3,7 +3,7 @@
 #define GATE_HPP
 
 #include "vfd.hpp"
-#include "buzzer.hpp"
+#include "indicator.hpp"
 #include <driver/gpio.h>
 #include <esp_log.h>
 #include <string>
@@ -11,7 +11,6 @@
 #include <atomic>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "buzzer.hpp"
 
 // Define a delay (in milliseconds) waited for the VFD startup after the relay is turned on.
 #define DELAY_VFD_STARTUP 870
@@ -59,7 +58,6 @@ public:
          gpio_num_t kRelayPinGpio,
 
          VFD *vfd,
-         buzzer_t *buzzer,
 
          uint32_t runDurationMs
     );
@@ -126,7 +124,8 @@ private:
     const gpio_num_t kRelayPinGpio;          // GPIO for the VFD supply relay
 
     VFD* const vfd;       // Pointer to the associated VFD object
-    buzzer_t* const buzzer; // Pointer to the buzzer object
+    // note: buzzer / LED are no longer reached through a pointer - the indicator task is
+    // addressed by free functions from indicator.hpp
 
     const float defaultFrequency = DEFAULT_VFD_FREQUENCY;  // Frequency (Hz) to use when running
     const uint32_t runDurationMs;  // Full run duration (0% to 100%) in milliseconds
