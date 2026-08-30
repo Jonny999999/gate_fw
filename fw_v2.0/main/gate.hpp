@@ -8,6 +8,7 @@
 #include <esp_log.h>
 #include <string>
 #include <algorithm>  // for std::clamp
+#include <atomic>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "buzzer.hpp"
@@ -86,6 +87,14 @@ public:
     bool getIsMoving() const {return state == MOVING_CLOSING || state == MOVING_OPENING || state == WAITING_FOR_VFD_STARTUP;};
     bool getIsClosing() const {return state == MOVING_CLOSING;};
 
+    // Error reporting.
+    // ERROR_STATE only lasts a single handle() cycle before the gate returns to
+    // IDLE_PARTIALLY_OPEN, so an observer running in another task would almost always miss
+    // it. The flag below is therefore latched until it is explicitly cleared, which is what
+    // the fault LED is driven from. (ROADMAP.md B13)
+    bool getErrorLatched() const {return errorLatched;};
+    void clearErrorLatch() {errorLatched = false;};
+
 
 private:
     // ==== CONFIG ====
@@ -128,6 +137,10 @@ private:
     // Variables to track previous state of limit switches (for logging changes)
     bool prevOpenSwitchState = false;
     bool prevClosedSwitchState = false;
+
+    // Latched error indication, see getErrorLatched(). Written by the gate task, read by
+    // the control task - std::atomic makes that explicit.
+    std::atomic<bool> errorLatched{false};
 
     // Variables for pause/resume support
     bool wasOpeningBeforePause = false;

@@ -15,6 +15,7 @@ extern "C" {
 #include "vfd.hpp"
 #include "buzzer.hpp"
 #include "gate.hpp"
+#include "gate_task.hpp"
 
 #include "control.hpp"
 
@@ -85,35 +86,22 @@ void configure_gpio_pins() {
 
 
 
-// Task function that repeatedly calls gate1.handle()
-void gateHandleTask(void *pvParameters)
-{
-    Gate* gate = (Gate*) pvParameters;
-    while (true) {
-        gate->handle();
-        vTaskDelay(pdMS_TO_TICKS(500));  // Call handle() every 100 ms.
-    }
-}
 
 
 
-
-
-
-//#define RUN_GPIO_TEST
-//#define RUN_MODBUS_TEST
-//#define RUN_GATE_TEST
+// Set to 1 to skip the normal control logic and only mirror the inputs to the outputs.
+// Useful for checking the wiring of the control cabinet, see iotest.h.
+#define RUN_GPIO_TEST 0
 
 extern "C" void app_main(void)
 {
-
+    //=== 1. hardware init ===
     // initialize gpio pins as inputs/outputs
     configure_gpio_pins();
-
-    // Configure UART
+    // Configure UART for the RS485 / modbus bus
     modbus_init();
 
-    // set loglevel
+    //=== 2. logging ===
     esp_log_level_set("Modbus-RTU", ESP_LOG_WARN);
     esp_log_level_set("IO-test", ESP_LOG_INFO);
     esp_log_level_set("VFD", ESP_LOG_INFO);
@@ -121,190 +109,73 @@ extern "C" void app_main(void)
     esp_log_level_set("Gate2_East", ESP_LOG_INFO);
     esp_log_level_set("buzzer", ESP_LOG_ERROR);
     esp_log_level_set("control", ESP_LOG_INFO);
+    esp_log_level_set("gateTask", ESP_LOG_INFO);
+    esp_log_level_set("input", ESP_LOG_INFO);
 
-    //--- create task for buzzer ---
+    //=== 3. buzzer ===
     xTaskCreate(&task_buzzer, "task_buzzer", 2048, NULL, 5, NULL);
+    buzzer.beep(3, 50, 100); // beep at startup
 
-    // beep at startup
-    buzzer.beep(3, 50, 100);
-
-    // Create VFD instances
-    VFD vfd1(11); // VFD 1 with address 0x11
-    VFD vfd2(77); // VFD 2 with address 0x77
-    // Note: trying higher / more individual addresses to not be potentially confused with function codes
-
-
-
-    // Create a Gate instance using the configured GPIOs.
-    // Parameters:
-    //   - Gate name: "Gate1"
-    //   - kLimitSwitchOpenGpio: CONFIG_SW_G1_OPEN_GPIO (e.g., GPIO_NUM_5)
-    //   - kLimitSwitchClosedGpio: CONFIG_SW_G1_CLOSED_GPIO (e.g., GPIO_NUM_18)
-    //   - kRelayPinGpio: CONFIG_RELAY_VFD1_GPIO (e.g., GPIO_NUM_25)
-    //   - pointer to VFD instance: vfd1 (created earlier)
-    //   - pointer to Buzzer instance: buzzer (assumed global or instantiated)
-    //   - full run duration (0% to 100%): 5000 ms
-    Gate gate1West("Gate1_West",
-               CONFIG_SW_G1_OPEN_GPIO, 0, // active low (switch NO to GND -> optocoupler ON)
-               CONFIG_SW_G1_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
-               CONFIG_RELAY_VFD1_GPIO,
-               &vfd1,
-               &buzzer,
-               9000 + 1000
-    );
-
-
-
-// at 45Hz 2 start time:
-// gate1 west: 9s
-// gate2 east: 11s
-
-// open:
-// west: 10s, east: 11s
-// ----
-// 50 Hz start setting 7:
-// 9s and 10s
-
-    Gate gate2East("Gate2_East",
-               CONFIG_SW_G2_OPEN_GPIO, 0, // active low (switch NO to GND -> optocoupler ON)
-               CONFIG_SW_G2_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
-               CONFIG_RELAY_VFD2_GPIO,
-               &vfd2,
-               &buzzer,
-               10000 + 1000
-    );
-
-
-
-ControlConfig controlConfig = {
-    .gateA = &gate1West,
-    .gateB = &gate2East,
-    .remoteOpenGpio = CONFIG_REMOTE_OPEN_GPIO,
-    .remoteCloseGpio = CONFIG_REMOTE_CLOSE_GPIO,
-    .buttonOpenGpio = CONFIG_BTN_OPEN_GPIO,
-    .buttonCloseGpio = CONFIG_BTN_CLOSE_GPIO,
-    .faultLedGpio = CONFIG_LED_GPIO,
-    .lightBarrierGpio = CONFIG_LIGHTBARRIER_GPIO,
-    .buzzer = &buzzer
-};
-
-#ifndef RUN_GATE_TEST
-#ifndef RUN_MODBUS_TEST
-    // Create Task handling user input and the gates
-    xTaskCreate(controlTask, "ControlTask", 4096*2, (void*)&controlConfig, 5, nullptr);
-#endif
-#endif
-
-
-
-#ifdef RUN_GATE_TEST
-    // Create a task that continuously calls gate1.handle()
-    xTaskCreate(gateHandleTask, "gateHandleTask", 2048*5, &gate1, 5, NULL);
-
-
-
-    ESP_LOGW("GateTest", "Starting Gate Test Sequence.");
-
-    // --- Test Sequence with simple delays ---
-    
-    // 1. Open the gate for 3000 ms.
-    ESP_LOGW("GateTest", "Command: Open for 3000 ms");
-    gate1.openForMs(3000);
-    vTaskDelay(pdMS_TO_TICKS(10000));  // Wait longer than 3000 ms to let the movement finish
-
-    // 2. Run the gate to fully open (100%).
-    ESP_LOGW("GateTest", "Command: Run to 100%% (Fully Open)");
-    gate1.runTo(100.0f);
-    vTaskDelay(pdMS_TO_TICKS(10000));  // Wait long enough for full open movement
-
-    // 3. Run the gate to fully close (0%).
-    ESP_LOGW("GateTest", "Command: Run to 0%% (Fully Closed)");
-    gate1.runTo(0.0f);
-    vTaskDelay(pdMS_TO_TICKS(10000));  // Wait long enough for full close movement
-
-    // 4. Open the gate for 5000 ms, but stop it manually after 2000 ms.
-    ESP_LOGW("GateTest", "Command: Open for 5000 ms, manual stop after 2000 ms");
-    gate1.openForMs(5000);
-    vTaskDelay(pdMS_TO_TICKS(2000));  // Wait 2 seconds
-    ESP_LOGW("GateTest", "Command: stopping gate");
-    gate1.stop();                     // Issue a stop command
-    vTaskDelay(pdMS_TO_TICKS(3000));  // Allow time for the stop to take effect
-
-    ESP_LOGW("GateTest", "Gate Test Sequence Completed.");
-    
-    // Optionally, suspend or delete this task if no further testing is required.
-    vTaskDelay(pdMS_TO_TICKS(100000));
-    vTaskDelete(NULL);
-
-#endif
-
-
-#ifdef RUN_MODBUS_TEST
-
-    gpio_set_level(CONFIG_RELAY_VFD1_GPIO, 1);
-    gpio_set_level(CONFIG_RELAY_VFD2_GPIO, 1);
-    ESP_LOGW(TAG, "Modbus test: turned on relay, waitin 2s for vfd startup...");
-    vTaskDelay(pdMS_TO_TICKS(2000));
-        vfd1.setFrequency(20); // Set frequency to 200 Hz
-
-    while (1)
-    {
-        uint16_t temperature;
-        float voltage, current;
-
-        // Control VFD 1
-        //ESP_LOGW(TAG, "test FORWARD operation...");
-        //vfd1.setFrequency(20); // Set frequency to 200 Hz
-        //vfd1.start(true);
-        //vTaskDelay(pdMS_TO_TICKS(2000));
-        //vfd1.getVoltage(&voltage);
-        //vfd1.getCurrent(&current);
-        //vfd1.getTemperature(&temperature);
-        //ESP_LOGI("Main", "VFD1 -> Voltage: %.1f V, Current: %.1f A, Temperature: %d C", voltage, current, temperature);
-        //vfd1.stop();
-        //ESP_LOGW(TAG, "turning off for 2s");
-        //vTaskDelay(pdMS_TO_TICKS(2000));
-
-        ESP_LOGW(TAG, "test REVERSE operation...");
-        vfd1.start(false);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        vfd1.getVoltage(&voltage);
-        vfd1.getCurrent(&current);
-        vfd1.getTemperature(&temperature);
-        ESP_LOGI("Main", "VFD1 -> Voltage: %.1f V, Current: %.1f A, Temperature: %d C", voltage, current, temperature);
-        vfd1.stop();
-        ESP_LOGW(TAG, "turning off for 2s");
-        vTaskDelay(pdMS_TO_TICKS(2000));
-
-        //// Control VFD 2
-        //vfd2.setFrequency(10); // Set frequency to 150 Hz
-        //vfd2.start();
-        //vTaskDelay(pdMS_TO_TICKS(1500));
-        //vfd2.getVoltage(&voltage);
-        //vfd2.getCurrent(&current);
-        //vfd2.getTemperature(&temperature);
-        //ESP_LOGI("Main", "VFD2 -> Voltage: %d, Current: %d, Temperature: %d", voltage, current, temperature);
-        //vfd2.stop();
-
-    }
-
-#endif
-
-
-#ifdef RUN_GPIO_TEST
-    // GPIO Test
-    ESP_LOGW(TAG, "starting GPIO test");
+#if RUN_GPIO_TEST
+    ESP_LOGW(TAG, "RUN_GPIO_TEST is enabled - not starting the gate control!");
     while (1)
     {
         ioTest_readAllInputs();
         ioTest_setOutputsToInputStates();
         vTaskDelay(pdMS_TO_TICKS(300));
     }
+#else
+
+    //=== 4. VFDs ===
+    // note: these are function-local statics on purpose. They must be constructed AFTER
+    // modbus_init() (the VFD constructor reads a register), but still outlive app_main
+    // because the gate task keeps using them.
+    // Higher / more distinctive addresses than 1 and 2, so an address can not be confused
+    // with a modbus function code while debugging.
+    static VFD vfd1(11);
+    static VFD vfd2(77);
+
+    //=== 5. gates ===
+    // Parameters: name, limit switch open (gpio, active level), limit switch closed
+    //             (gpio, active level), VFD supply relay gpio, VFD, buzzer,
+    //             full run duration 0% -> 100% in ms
+    //
+    // Measured full run durations (at 50 Hz, VFD start setting 7):
+    //   west gate: ~9 s, east gate: ~10 s   (1 s margin added below)
+    static Gate gate1West("Gate1_West",
+               CONFIG_SW_G1_OPEN_GPIO, 0,   // active low (switch NO to GND -> optocoupler ON)
+               CONFIG_SW_G1_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
+               CONFIG_RELAY_VFD1_GPIO,
+               &vfd1,
+               &buzzer,
+               9000 + 1000);
+
+    static Gate gate2East("Gate2_East",
+               CONFIG_SW_G2_OPEN_GPIO, 0,   // active low (switch NO to GND -> optocoupler ON)
+               CONFIG_SW_G2_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
+               CONFIG_RELAY_VFD2_GPIO,
+               &vfd2,
+               &buzzer,
+               10000 + 1000);
+
+    //=== 6. tasks ===
+    // The gate task owns the Gate objects and therefore the RS485 bus; the control task
+    // only sends it commands. The input task is started by the control task.
+    gateTaskStart(&gate1West, &gate2East);
+
+    static ControlConfig controlConfig = {
+        .remoteOpenGpio = CONFIG_REMOTE_OPEN_GPIO,
+        .remoteCloseGpio = CONFIG_REMOTE_CLOSE_GPIO,
+        .buttonOpenGpio = CONFIG_BTN_OPEN_GPIO,
+        .buttonCloseGpio = CONFIG_BTN_CLOSE_GPIO,
+        .faultLedGpio = CONFIG_LED_GPIO,
+        .lightBarrierGpio = CONFIG_LIGHTBARRIER_GPIO,
+        .buzzer = &buzzer
+    };
+    xTaskCreate(controlTask, "ControlTask", 4096 * 2, (void *)&controlConfig, 5, nullptr);
+
+    // app_main may return here: the main task is deleted, all created tasks keep running.
+    // (previously a 'while(1) vTaskDelay(portMAX_DELAY)' was needed because the gate, VFD
+    //  and config objects were locals of app_main and would have been destroyed)
 #endif
-
-
-// keep main task alive forever 
-// (prevent deconstruction of objects passed to tasks)
-while(1) vTaskDelay(portMAX_DELAY); 
-
 }

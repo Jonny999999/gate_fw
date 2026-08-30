@@ -1,5 +1,6 @@
 #include "control.hpp"
 #include "esp_log.h"
+#include "gate_task.hpp"
 #include "input.hpp"
 #include "timing.hpp"
 #include <stdlib.h>
@@ -145,10 +146,10 @@ void controlTask(void *param)
                     ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
                 } else {
                     // barrier not obstructed -> close immediately
-                    config->gateA->closeCompletely();
-                    config->gateB->closeCompletely();
+                    gateSendCommand(GateCommandType::CLOSE_COMPLETELY);
                     ctlState = ControlState::MOVING_TO_TARGET;
                     // clear fault led (indicates previous error during last run)
+                    clearGateErrors();
                     gpio_set_level(config->faultLedGpio, 0);
                 }
             }
@@ -158,8 +159,9 @@ void controlTask(void *param)
             {
                 ESP_LOGW(TAG_CTL, "Opening (waiting for further input)");
                 config->buzzer->beep(1, 100, 0);
-                config->gateA->openCompletely();
-                config->gateB->openCompletely();
+                gateSendCommand(GateCommandType::OPEN_COMPLETELY);
+                clearGateErrors();
+                gpio_set_level(config->faultLedGpio, 0);
                 countPressed = 0;
                 timestampLastAction = millis();
                 ctlState = ControlState::WAIT_FOR_INPUT;
@@ -170,8 +172,9 @@ void controlTask(void *param)
             {
                 ESP_LOGW(TAG_CTL, "REMOTE: Opening completely");
                 config->buzzer->beep(1, 1000, 0);
-                config->gateA->openCompletely();
-                config->gateB->openCompletely();
+                gateSendCommand(GateCommandType::OPEN_COMPLETELY);
+                clearGateErrors();
+                gpio_set_level(config->faultLedGpio, 0);
                 ctlState = ControlState::MOVING_TO_TARGET;
             }
             //--- debug barrier ---
@@ -192,8 +195,7 @@ void controlTask(void *param)
             if (input.closeButtonIsHeld)
             { // close button is pressed while waiting for input
                 ESP_LOGW(TAG_CTL, "Close button while waiting for input -> stopping gates");
-                config->gateA->stop();
-                config->gateB->stop();
+                gateSendCommand(GateCommandType::STOP);
                 config->buzzer->beep(1, 400, 0);
                 ctlState = ControlState::IDLE;
             }
@@ -216,8 +218,8 @@ void controlTask(void *param)
             else if (millis() - timestampLastAction > std::min(BUTTON_PRESS_INITIAL_OPEN_TIME_MS, BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS) - CONTROL_LOOP_HANDLE_DELAY_MS)
             { // no input for more than almost the currently desired runtime
                 ESP_LOGW(TAG_CTL, "Timeout waiting for further input - applying target duration");
-                config->gateA->updateTargetRunTime(BUTTON_PRESS_INITIAL_OPEN_TIME_MS + (BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS * countPressed));
-                config->gateB->updateTargetRunTime(BUTTON_PRESS_INITIAL_OPEN_TIME_MS + (BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS * countPressed));
+                gateSendCommand(GateCommandType::SET_TARGET_RUN_TIME,
+                                BUTTON_PRESS_INITIAL_OPEN_TIME_MS + (BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS * countPressed));
 
                 if (countPressed > 1)
                 {
@@ -235,16 +237,17 @@ void controlTask(void *param)
             // or reset to idle when gates have stopped
         case ControlState::MOVING_TO_TARGET:
             // if any gate entered error state during this handle run, turn on fault led
-            if ((config->gateA->getState() == ERROR_STATE) || (config->gateB->getState() == ERROR_STATE))
+            if (anyGateHadError())
             {
-                // note: gate is in error state for one handle() cycle only - currently it switches to IDLE in the next cycle
-                ESP_LOGE(TAG_CTL, "At least one gate is currently in ERROR_STATE, turning on fault led...");
+                // note: the flag is latched by the Gate, because ERROR_STATE itself only
+                // lasts a single handle() cycle and would otherwise be missed from here
+                ESP_LOGE(TAG_CTL, "At least one gate reported an error, turning on fault led...");
                 gpio_set_level(config->faultLedGpio, 1);
-                // note: led is reset/turned off at next start event
+                // note: led and latch are reset at the next start event
             }
 
             //--- idle when gates stopped at target or timeout ---
-            if (config->gateA->getIsIdling() && config->gateB->getIsIdling())
+            if (gatesAreIdle())
             { // both do not move and are ready to receive new commands
                 ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
                 ctlState = ControlState::IDLE;
@@ -253,14 +256,13 @@ void controlTask(void *param)
             else if (input.anyButtonPressed) // any remote input or button is pressed while moving to target
             {
                 ESP_LOGW(TAG_CTL, "User event received while moving => stopping movement");
-                config->gateA->stop();
-                config->gateB->stop();
+                gateSendCommand(GateCommandType::STOP);
                 config->buzzer->beep(1, 400, 0);
                 // note: controlState gets switched in above case when WAIT_LOCK is actually over (both gates IDLE)
             }
 
             //--- light-barrier obstructed while closing ---
-            else if ((config->gateA->getIsClosing() || config->gateB->getIsClosing()) && lightBarrierIsObstructed(input))
+            else if (anyGateIsClosing() && lightBarrierIsObstructed(input))
             {
                 config->buzzer->beep(4, 100, 50);
                 ESP_LOGE(TAG_CTL, "Lightbarrier got obstructed while a gate is closing => pausing movement");
@@ -269,8 +271,7 @@ void controlTask(void *param)
                 // additionally manually reset timestamp so the timeout starts when entering the PAUSED mode 
                 // otherwise immediately timeouts when it was already active before pressing start button (e.g stand in gate some time and start)
                 timestampLastBarrierChange = millis();
-                config->gateA->pause();
-                config->gateB->pause();
+                gateSendCommand(GateCommandType::PAUSE);
             }
             break;
 
@@ -293,8 +294,7 @@ void controlTask(void *param)
             if (input.anyButtonPressed)
             {
                 ESP_LOGW(TAG_CTL, "User event received while waiting for barrier => cancel pending movement");
-                config->gateA->cancel();
-                config->gateB->cancel();
+                gateSendCommand(GateCommandType::CANCEL);
                 config->buzzer->beep(1, 1000, 0);
                 gpio_set_level(config->faultLedGpio, 0); // turn off fault led
                 ctlState = ControlState::IDLE;
@@ -325,15 +325,7 @@ void controlTask(void *param)
                     // - in case movement was stopped we need to resume
                     // - in case gate did not start (obstructed at button press) we need to start movement initially
 
-                    if (config->gateA->getIsIdling()) // any IDLE state
-                        config->gateA->closeCompletely();
-                    else // likely PAUSED state
-                        config->gateA->resume();
-
-                    if (config->gateB->getIsIdling()) // any IDLE state
-                        config->gateB->closeCompletely();
-                    else // likely PAUSED state
-                        config->gateB->resume();
+                    gateSendCommand(GateCommandType::CONTINUE_CLOSING);
 
                     ctlState = ControlState::MOVING_TO_TARGET;
                     gpio_set_level(config->faultLedGpio, 0); // turn off fault led
@@ -343,8 +335,7 @@ void controlTask(void *param)
             else if ((millis() - timestampLastBarrierChange) > BARRIER_WAIT_FOR_FREE_TIMEOUT_MS)
             {
                 ESP_LOGE(TAG_CTL, "Barrier obstructed longer than %d ms -> wont continue automatically after clearing the barrier -> switching to IDLE", BARRIER_WAIT_FOR_FREE_TIMEOUT_MS);
-                config->gateA->cancel();
-                config->gateB->cancel();
+                gateSendCommand(GateCommandType::CANCEL);
                 config->buzzer->beep(1, 1000, 0);
                 ctlState = ControlState::IDLE;
                 gpio_set_level(config->faultLedGpio, 1); // turn on fault led
@@ -359,10 +350,8 @@ void controlTask(void *param)
         } // end switch
 
 
-        // handle gates (update pos, handle limits, turn on/off...)
-        config->gateB->handle();
-        config->gateA->handle();
-
+        // note: the gates are stepped by their own task (gate_task.cpp), so this loop
+        // now really runs at CONTROL_LOOP_HANDLE_DELAY_MS and never blocks on modbus
         vTaskDelay(pdMS_TO_TICKS(CONTROL_LOOP_HANDLE_DELAY_MS)); // Small delay to avoid busy loop
     } // end control loop
 }

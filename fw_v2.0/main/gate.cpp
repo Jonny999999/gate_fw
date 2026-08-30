@@ -158,6 +158,7 @@ void Gate::startMovement(bool opening) {
         buzzer->beep(5, 70, 100);
         // switch to ERROR state to prevent infinite loop of retries
         state = ERROR_STATE;
+        errorLatched = true;
         return;
     }
     #endif
@@ -275,6 +276,7 @@ void Gate::stop(bool forceStatePartialOpen){ // default true
         buzzer->beep(5, 70, 100);
         forceStopRelay();
         state = ERROR_STATE;
+        errorLatched = true;
         return;
     }
     #endif
@@ -398,6 +400,7 @@ void Gate::handle() {
             ESP_LOGE(name, "Open movement timeout exceeded.");
             stop(false);
             state = ERROR_STATE;
+            errorLatched = true;
             break;
         }
         // limit reached
@@ -435,6 +438,7 @@ void Gate::handle() {
             ESP_LOGE(name, "Close movement timeout exceeded.");
             stop(false);
             state = ERROR_STATE;
+            errorLatched = true;
             break;
         }
         // limit reached
@@ -459,6 +463,7 @@ void Gate::handle() {
             stop(false);
             buzzer->beep(1, 1500, 100);
             state = ERROR_STATE;
+            errorLatched = true;
         }
         #endif
         break;
