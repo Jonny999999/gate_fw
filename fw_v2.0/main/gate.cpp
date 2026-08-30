@@ -108,8 +108,17 @@ bool Gate::checkLimitSwitchOpenActive() {
 
 
 bool Gate::checkCurrentLimitExceeded() {
-    float vfdCurrent;
-    vfd->getCurrent(&vfdCurrent);
+    // note: on a failed modbus read getCurrent() leaves the output untouched.
+    // It used to be read uninitialised here and the error was ignored, so random stack
+    // content could exceed the limit and abort a closing movement with ERROR_STATE.
+    // A failed reading is now treated as 'limit not exceeded' - the movement timeout and
+    // the limit switches still protect the gate.
+    float vfdCurrent = 0.0f;
+    esp_err_t err = vfd->getCurrent(&vfdCurrent);
+    if (err != ESP_OK) {
+        ESP_LOGW(name, "Could not read VFD current (error 0x%x) - skipping current limit check", err);
+        return false;
+    }
     ESP_LOGD(name, "VFD current: %05.2f A", vfdCurrent);
     return (vfdCurrent > kCurrentLimitAmpere);
 }
@@ -413,9 +422,11 @@ void Gate::handle() {
     {
         updatePosition();
         #ifdef LOG_VFD_CURRENT_WHEN_CLOSING
-            float vfdCurrent;
-            vfd->getCurrent(&vfdCurrent);
-            ESP_LOGI(name, "Closing... VFD current: %05.2f A", vfdCurrent);
+            float vfdCurrent = 0.0f;
+            if (vfd->getCurrent(&vfdCurrent) == ESP_OK)
+                ESP_LOGI(name, "Closing... VFD current: %05.2f A", vfdCurrent);
+            else
+                ESP_LOGW(name, "Closing... could not read VFD current");
         #endif
 
         // timeout
