@@ -10,6 +10,10 @@ time without re-explaining the context.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done
 
+**Progress so far on `cleanup-rework`:** toolchain moved to ESP-IDF 5.5.1; bugs
+B1, B3–B10, B14, B15 fixed; host test harness added. Remaining before Phase 2:
+the task/queue restructuring (1.2) plus B2, B11, B12, B13.
+
 ---
 
 ## Phase 1 — Cleanup & rework (branch `cleanup-rework`)
@@ -18,22 +22,23 @@ No functional changes intended beyond fixing the defects listed under 1.1.
 
 ### 1.1 Bugs found during analysis
 
-| # | Where | Problem |
-|---|-------|---------|
-| B1 | `components/gpio/gpio_evaluateSwitch.cpp` | `msPressed` is **stale on the rising edge** and is not updated on the press→release transition. Combined with `state` lagging the release by `minOffMs`, a *short* press can be evaluated using `msPressed` from the *previous* press → false long-press. Self-perpetuating once it happens once. **Root cause of the reported long-press bug.** |
-| B2 | `control.cpp` (whole control task) | `Gate::handle()` / `startMovement()` / `stop()` perform **blocking Modbus transactions** (10–150 ms each, up to ~600 ms with retries) inside the control loop. Button sampling stops for that entire time, so debounce/edge timing is not deterministic. Amplifies B1. |
-| B3 | `gate.cpp:285` `Gate::pause()` | `stop()` sets `state = IDLE_PARTIALLY_OPEN` *before* `wasOpeningBeforePause = (state == MOVING_OPENING)` is evaluated → always `false`. `resume()` therefore always resumes *closing*. Currently masked because pause is only used while closing. |
-| B4 | `gate.cpp:300-306` `Gate::resume()` | `targetRunTimeMs` is `uint64_t`; `targetRunTimeMs*1000 - elapsedSinceStart` **underflows** when the elapsed time exceeds the target, and the guard `if (targetRunTimeMs <= 0)` can never be true for an unsigned type → resume with an enormous run time. |
-| B5 | `gate.cpp:135` `startMovement()` | Unit mismatch: microsecond difference compared against `DELAY_VFD_STARTUP` in **milliseconds** (missing `* 1000`). The "relay was only just switched on" branch is effectively dead. |
-| B6 | `gate.cpp:142` `startMovement()` | `lastPositionUpdateTimestampUs = timestampStartUs;` is assigned **before** `timestampStartUs` is refreshed → the first `updatePosition()` of every movement integrates the time since the *previous* movement → position estimate jumps to 0 % / 100 % immediately. Position tracking is effectively non-functional. |
-| B7 | `gate.cpp` ctor | `timestampStartUs`, `targetRunTimeMs`, `nextDirection`, `lastActivityTimestampUs`, `timestampRelayTurnedOnUs`, `lastPositionUpdateTimestampUs` are **never initialised** → undefined behaviour on the first cycles after boot. |
-| B8 | `modbus.c:138-155` | `uint8_t response[8]` is **uninitialised** and `memcmp(frame, response, 8)` is executed without checking `len == 8` → a short/absent reply is compared against stack garbage. |
-| B9 | `control.cpp:71-73` | `#if (BARRIER_IS_IGNORED) return false #endif` — **missing semicolon**; enabling the debug switch breaks the build. |
-| B10 | `buzzer.cpp:93-97` | Struct initialised with `{ count = count, msOn = msOn, ... }` — those are *assignments*, not designated initialisers. Works by accident through evaluation order. |
-| B11 | `gate.cpp` | `runDurationMs + 5000` (15000 ms for gate 1) equals `kMovingTimeout` (15000 ms) → the timeout branch is checked first, so a missed limit switch ends in `ERROR_STATE` at the exact same instant. Margins should be explicit and separated. |
-| B12 | `modbus.c` | No mutex around the shared RS485 bus. Correct today only because a single task touches it; breaks silently as soon as gate handling is moved into its own task. |
-| B13 | `gate.cpp` | `ERROR_STATE` immediately self-transitions to `IDLE_PARTIALLY_OPEN` in the next `handle()` cycle; `control.cpp` relies on catching it inside that one cycle (see comment at `control.cpp:238`). Fragile — the error must be latched. |
-| B14 | `gate.cpp:325` | Side-effecting calls (`checkLimitSwitch*Active()` update `prev*SwitchState` and log) inside an `ESP_LOGV()` argument list — compiled out at the current log level, so behaviour changes with the log level. |
+| # | Status | Where | Problem |
+|---|--------|-------|---------|
+| B1 | **fixed** | `components/gpio/gpio_evaluateSwitch.cpp` | `msPressed` was **stale on the rising edge** and not reset per press. Combined with `state` lagging the release by `minOffMs`, a *short* press was evaluated using `msPressed` from the *previous* press → false long-press, self-perpetuating. **Root cause of the reported long-press bug.** Covered by host tests. |
+| B2 | open | `control.cpp` (whole control task) | `Gate::handle()` / `startMovement()` / `stop()` perform **blocking Modbus transactions** (10–150 ms each, up to ~600 ms with retries) inside the control loop, so button sampling stops for that entire time. B1's fix makes this fail safe (msPressed can only under-report), but the jitter remains → addressed by the input/VFD task split in 1.2. |
+| B3 | **fixed** | `gate.cpp` `Gate::pause()` | Direction was read *after* `stop()` had already overwritten `state` → `wasOpeningBeforePause` always `false`, `resume()` always resumed *closing*. |
+| B4 | **fixed** | `gate.cpp` `Gate::resume()` | Unsigned underflow in the remaining-run-time math; `if (targetRunTimeMs <= 0)` unreachable for an unsigned type. Remaining time is now computed once in `pause()`. |
+| B5 | **fixed** | `gate.cpp` `startMovement()` | Microsecond difference compared against a millisecond constant (missing `* 1000`). |
+| B6 | **fixed** | `gate.cpp` `startMovement()` | `lastPositionUpdateTimestampUs` seeded from the *previous* movement → position estimate slammed to 0 % / 100 % on the first update. |
+| B7 | **fixed** | `gate.cpp` ctor | Six members never initialised, read during the first cycles after boot. |
+| B8 | **fixed** | `modbus.c` | `memcmp` against an uninitialised `response[8]` without checking the received length. |
+| B9 | **fixed** | `control.cpp` | `BARRIER_IS_IGNORED` debug switch had a missing semicolon — broke the build when enabled. Both settings verified to compile. |
+| B10 | **fixed** | `buzzer.cpp` | Struct built with assignments instead of designated initialisers. |
+| B11 | open | `gate.cpp` | `runDurationMs + 5000` (15000 ms for gate 1) equals `kMovingTimeout` (15000 ms) → a missed limit switch hits the timeout branch at the exact same instant and ends in `ERROR_STATE`. Margins should be explicit and separated. |
+| B12 | open | `modbus.c` | No mutex around the shared RS485 bus. Correct today only because a single task touches it; breaks as soon as gate handling moves into its own task (1.2). |
+| B13 | open | `gate.cpp` | `ERROR_STATE` immediately self-transitions to `IDLE_PARTIALLY_OPEN`; `control.cpp` relies on catching it within that one cycle. The error must be latched instead. |
+| B14 | **fixed** | `gate.cpp` | Side-effecting `checkLimitSwitch*Active()` calls inside an `ESP_LOGV()` argument list — behaviour depended on the compiled log level. |
+| B15 | **fixed** | `gate.cpp` | `checkCurrentLimitExceeded()` read an uninitialised `float` and ignored the Modbus error, so a failed current read could abort a closing movement with `ERROR_STATE`. |
 
 ### 1.2 Structure / architecture
 
@@ -68,8 +73,12 @@ No functional changes intended beyond fixing the defects listed under 1.1.
 
 ### 1.3 Verification
 
-- [ ] Add a host-side test for the debounce/long-press state machine (feed a synthetic
-      level+timestamp sequence, assert the events). Cheap and catches B1-type regressions.
+- [x] Add a host-side test for the debounce/long-press state machine (feed a synthetic
+      level+timestamp sequence, assert the events). → `fw_v2.0/test_host/`, run with
+      `./run_tests.sh` (needs only g++, no ESP-IDF). 8 tests; two of them fail on the
+      pre-fix implementation.
+- [ ] Extend the host tests to the control state machine once it is decoupled from the
+      blocking VFD calls (1.2).
 - [ ] Note the manual test procedure in the README (which sequences to try on the real gate).
 
 ### 1.4 Documentation
@@ -82,8 +91,9 @@ No functional changes intended beyond fixing the defects listed under 1.1.
 - [ ] Update the *Usage* section for the reworked UI (see Phase 2).
 - [ ] Add a short "firmware architecture" section: tasks, queues, modules, who owns the
       RS485 bus.
-- [ ] Note the ESP-IDF version actually in use (`sdkconfig` says `5.3.2`) and the
-      flashing quirk (east gate must be slightly open) — the latter is already there, keep it.
+- [x] Note the ESP-IDF version actually in use → moved to **5.5.1**, README install/build
+      instructions corrected (`/opt/esp-idf` is empty; esp-idf lives in `~/esp/<version>/esp-idf`).
+      The flashing quirk (east gate must be slightly open) was already documented, kept.
 - [ ] Document the VFD parameter set required on the drives (addresses 11 / 77, Modbus
       control mode, baud rate) — currently only implicit in `doc/vfd/`.
 
