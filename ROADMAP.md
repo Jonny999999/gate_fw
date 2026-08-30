@@ -10,9 +10,15 @@ time without re-explaining the context.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done
 
-**Progress so far on `cleanup-rework`:** toolchain moved to ESP-IDF 5.5.1; bugs
-B1, B3–B10, B14, B15 fixed; host test harness added. Remaining before Phase 2:
-the task/queue restructuring (1.2) plus B2, B11, B12, B13.
+**Progress:**
+- `cleanup-rework`, tagged **`V2.2-rc1`** — toolchain moved to ESP-IDF 5.5.1, bugs
+  B1, B3–B10, B14, B15 fixed, host test harness added. *Not yet tested on the gate.*
+- `rework-tasks` (branched from `V2.2-rc1`) — task/queue restructuring. All 15 bugs
+  now fixed. *Not yet tested on the gate.*
+
+Test `V2.2-rc1` first and on its own: it is small and surgical, and some of its fixes
+do change behaviour (B6 makes position tracking work for the first time, B5 re-enables
+a dead code path). Flashing both sets at once makes any regression hard to attribute.
 
 ---
 
@@ -25,7 +31,7 @@ No functional changes intended beyond fixing the defects listed under 1.1.
 | # | Status | Where | Problem |
 |---|--------|-------|---------|
 | B1 | **fixed** | `components/gpio/gpio_evaluateSwitch.cpp` | `msPressed` was **stale on the rising edge** and not reset per press. Combined with `state` lagging the release by `minOffMs`, a *short* press was evaluated using `msPressed` from the *previous* press → false long-press, self-perpetuating. **Root cause of the reported long-press bug.** Covered by host tests. |
-| B2 | open | `control.cpp` (whole control task) | `Gate::handle()` / `startMovement()` / `stop()` perform **blocking Modbus transactions** (10–150 ms each, up to ~600 ms with retries) inside the control loop, so button sampling stops for that entire time. B1's fix makes this fail safe (msPressed can only under-report), but the jitter remains → addressed by the input/VFD task split in 1.2. |
+| B2 | **fixed** | `control.cpp` (whole control task) | `Gate::handle()` / `startMovement()` / `stop()` perform **blocking Modbus transactions** (10–150 ms each, up to ~600 ms with retries) inside the control loop, so button sampling stops for that entire time. Input sampling moved to a dedicated 5 ms task, and gate handling to its own task, so the control loop no longer blocks on modbus at all. |
 | B3 | **fixed** | `gate.cpp` `Gate::pause()` | Direction was read *after* `stop()` had already overwritten `state` → `wasOpeningBeforePause` always `false`, `resume()` always resumed *closing*. |
 | B4 | **fixed** | `gate.cpp` `Gate::resume()` | Unsigned underflow in the remaining-run-time math; `if (targetRunTimeMs <= 0)` unreachable for an unsigned type. Remaining time is now computed once in `pause()`. |
 | B5 | **fixed** | `gate.cpp` `startMovement()` | Microsecond difference compared against a millisecond constant (missing `* 1000`). |
@@ -34,39 +40,40 @@ No functional changes intended beyond fixing the defects listed under 1.1.
 | B8 | **fixed** | `modbus.c` | `memcmp` against an uninitialised `response[8]` without checking the received length. |
 | B9 | **fixed** | `control.cpp` | `BARRIER_IS_IGNORED` debug switch had a missing semicolon — broke the build when enabled. Both settings verified to compile. |
 | B10 | **fixed** | `buzzer.cpp` | Struct built with assignments instead of designated initialisers. |
-| B11 | open | `gate.cpp` | `runDurationMs + 5000` (15000 ms for gate 1) equals `kMovingTimeout` (15000 ms) → a missed limit switch hits the timeout branch at the exact same instant and ends in `ERROR_STATE`. Margins should be explicit and separated. |
-| B12 | open | `modbus.c` | No mutex around the shared RS485 bus. Correct today only because a single task touches it; breaks as soon as gate handling moves into its own task (1.2). |
-| B13 | open | `gate.cpp` | `ERROR_STATE` immediately self-transitions to `IDLE_PARTIALLY_OPEN`; `control.cpp` relies on catching it within that one cycle. The error must be latched instead. |
+| B11 | **fixed** | `gate.cpp` | `runDurationMs + 5000` (15000 ms for gate 1) equals `kMovingTimeout` (15000 ms) → a missed limit switch hits the timeout branch at the exact same instant and ends in `ERROR_STATE`. The target run time is now clamped to stay 2000 ms below the unchanged 15000 ms safety backstop. |
+| B12 | **fixed** | `modbus.c` | No mutex around the shared RS485 bus. The gate task is now the only owner of the bus by construction, so no mutex is needed. |
+| B13 | **fixed** | `gate.cpp` | `ERROR_STATE` immediately self-transitions to `IDLE_PARTIALLY_OPEN`; `control.cpp` could no longer catch it from another task, so `Gate` now latches it in an atomic flag that the control task clears at the next start command. |
 | B14 | **fixed** | `gate.cpp` | Side-effecting `checkLimitSwitch*Active()` calls inside an `ESP_LOGV()` argument list — behaviour depended on the compiled log level. |
 | B15 | **fixed** | `gate.cpp` | `checkCurrentLimitExceeded()` read an uninitialised `float` and ignored the Modbus error, so a failed current read could abort a closing movement with `ERROR_STATE`. |
 
 ### 1.2 Structure / architecture
 
-- [ ] **Decouple input sampling from the control loop.** Sample and debounce all buttons /
+- [x] **Decouple input sampling from the control loop.** Sample and debounce all buttons /
       remote / light barrier at a fixed, jitter-free rate (dedicated high-priority task or
       an `esp_timer` periodic callback) and hand *events* to the control task through a
       queue. Fixes the whole class of problems behind B1/B2.
-- [ ] **Move VFD/Modbus I/O off the control task.** Either a dedicated VFD task fed by a
+- [x] **Move gate handling (and with it all Modbus I/O) off the control task.** Either a dedicated VFD task fed by a
       command queue, or make `Gate` non-blocking with an explicit "waiting for Modbus"
       state. The control state machine must never block.
-- [ ] **Single time source.** Replace the mix of `esp_log_timestamp()` (10 ms granularity
+- [x] **Single time source.** Replace the mix of `esp_log_timestamp()` (10 ms granularity
       at `CONFIG_FREERTOS_HZ=100`, and a *logging* API) and raw `esp_timer_get_time()`
       with one small helper (`millis()` on top of `esp_timer_get_time()`), consistently
       in ms, with wrap-safe comparisons.
-- [ ] **Split `control.cpp`.** It currently mixes user-input interpretation, light-barrier
-      logic, fault-LED handling and gate sequencing. Proposed split:
-      `input` (events) · `control` (state machine) · `indicator` (LED + buzzer patterns).
-- [ ] **Own the objects properly.** `vfd1/2`, `gate1West/gate2East` and `controlConfig` are
+- [~] **Split `control.cpp`.** Input handling is out (`input.cpp`) and gate sequencing is
+      out (`gate_task.cpp`). Still mixed in: light-barrier timing, fault-LED blinking and
+      buzzer patterns → pull out an `indicator` module (LED + buzzer patterns).
+- [x] **Own the objects properly.** `vfd1/2`, `gate1West/gate2East` and `controlConfig` are
       locals in `app_main()` kept alive only by `while(1) vTaskDelay(portMAX_DELAY)`.
       Make them file-scope or heap-allocated and drop the keep-alive hack.
 - [ ] **Move the buzzer task into `buzzer_t`** (`createTask()`), as the existing TODO says.
-- [ ] **Turn `components/gpio`** into a proper reusable debounce component with unit-testable
+- [x] **Replaced `components/gpio`** into a proper reusable debounce component with unit-testable
       logic (see 1.3), or replace it outright.
 - [ ] **`config.h` split:** GPIO/pin mapping vs. behaviour tuning (timings, thresholds).
       Timing constants currently live scattered across `control.cpp` and `gate.hpp`.
-- [ ] **Remove dead code:** `Kconfig.projbuild` (leftover from the ESP-IDF RS485 echo
-      example, unused), the `RUN_GATE_TEST` / `RUN_MODBUS_TEST` / `RUN_GPIO_TEST` blocks in
-      `main.cpp` (move to a separate `selftest` module or delete), `gateHandleTask()`.
+- [~] **Remove dead code:** `RUN_GATE_TEST` / `RUN_MODBUS_TEST` and `gateHandleTask()`
+      removed (the gate test referenced an object that no longer existed and could not have
+      compiled). `RUN_GPIO_TEST` kept — still useful for checking cabinet wiring.
+      Still open: `Kconfig.projbuild`, a leftover from the ESP-IDF RS485 echo example.
 - [ ] **Consistent language & style:** decide on one comment language, one naming scheme
       (`buzzer_t` vs `Gate` vs `VFD`), consistent `esp_err_t` returns (`modbus.c` returns
       a bare `-2` in one place, `0` in another).
