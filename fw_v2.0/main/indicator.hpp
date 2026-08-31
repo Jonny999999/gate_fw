@@ -30,27 +30,7 @@
 // LED is ever given its own output it becomes the natural home for those - the call sites
 // would not have to change, only which channel StatusIndication is rendered on.
 
-//===============================
-//======= Blink patterns ========
-//===============================
-enum class BlinkMode : uint8_t
-{
-    OFF,     // output permanently off
-    ON,      // output permanently on
-    BLINKING // msOn / msOff, repeated repeatCount times
-};
-
-// 0 repetitions means: keep going until the pattern is replaced
-#define INDICATOR_REPEAT_FOREVER 0
-
-struct BlinkPattern
-{
-    BlinkMode mode;
-    uint16_t msOn;
-    uint16_t msOff;
-    uint16_t repeatCount;
-};
-
+#include "blink.hpp"
 
 //===============================
 //======= Buzzer signals ========

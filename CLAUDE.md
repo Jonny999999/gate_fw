@@ -4,7 +4,7 @@ Firmware + hardware for a self-made automated sliding gate (2 gates, custom moto
 VFDs via RS485/Modbus, limit switches, buttons, remote, light barrier, ESP32 on a
 custom PCB).
 
-- Active firmware: `fw_v2.0/` (ESP-IDF **5.5.1**, see below). `fw_v1.0-legacy/` is
+- Active firmware: `fw_v2.0/` (ESP-IDF **5.5.2**, see below). `fw_v1.0-legacy/` is
   reference only — do not change it.
 - Plan and open work items: **[ROADMAP.md](ROADMAP.md)** — read it before starting work
   and keep it up to date as items are completed.
@@ -12,13 +12,15 @@ custom PCB).
 
 ## Build
 
-The project targets **ESP-IDF 5.5.1**, installed at `/home/jonny/esp/v5.5.1/esp-idf`.
+The project targets **ESP-IDF 5.5.2**, installed at `/home/jonny/esp/v5.5.2/esp-idf`.
+Use that one — building with 5.5.1 leaves a build directory the 5.5.2 toolchain rejects
+(`Tool doesn't match supported version`), which then needs an `idf.py fullclean`.
 (Note: `/opt/esp-idf` is empty; the 5.3 install is unusable because its python venv
 `idf5.3_py3.13_env` points at a python3.13 that no longer exists after the system upgrade
 to python 3.14.)
 
 ```bash
-. /home/jonny/esp/v5.5.1/esp-idf/export.sh
+. /home/jonny/esp/v5.5.2/esp-idf/export.sh
 idf.py build
 ```
 

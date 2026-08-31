@@ -108,87 +108,6 @@ static std::atomic<uint32_t> buzzerAlarmTiming{0}; // msOn in the high half, msO
 static std::atomic<bool> buzzerStopRequested{false};
 
 
-//=========================================================
-//===== IndicatorChannel - drives one output pin ==========
-//=========================================================
-// Small state machine that turns a BlinkPattern into pin levels. Used for the buzzer and
-// for the LED; the difference in behaviour comes from how the two are fed, not from here.
-class IndicatorChannel
-{
-public:
-    void init(gpio_num_t gpio)
-    {
-        this->gpio = gpio;
-        gpio_set_direction(gpio, GPIO_MODE_OUTPUT);
-        gpio_set_level(gpio, 0);
-    }
-
-    // Start a new pattern. Restarts even if it is the same one.
-    void setPattern(const BlinkPattern &newPattern, uint32_t nowMs)
-    {
-        pattern = newPattern;
-        repeatsDone = 0;
-        finished = (newPattern.mode == BlinkMode::OFF);
-        phaseIsOn = (newPattern.mode != BlinkMode::OFF);
-        timestampPhaseStartMs = nowMs;
-        applyOutput(phaseIsOn);
-    }
-
-    // Advance the pattern. Call once per task tick.
-    void update(uint32_t nowMs)
-    {
-        if (finished || pattern.mode != BlinkMode::BLINKING)
-            return;
-
-        const uint32_t phaseDurationMs = phaseIsOn ? pattern.msOn : pattern.msOff;
-        if ((nowMs - timestampPhaseStartMs) < phaseDurationMs)
-            return;
-
-        timestampPhaseStartMs = nowMs;
-
-        if (phaseIsOn)
-        {
-            // on phase over -> go dark, unless there is no off phase at all
-            if (pattern.msOff == 0)
-                return; // stays on permanently
-            phaseIsOn = false;
-            applyOutput(false);
-        }
-        else
-        {
-            // one full on/off cycle completed
-            repeatsDone++;
-            if (pattern.repeatCount != INDICATOR_REPEAT_FOREVER && repeatsDone >= pattern.repeatCount)
-            {
-                finished = true;
-                applyOutput(false);
-                return;
-            }
-            phaseIsOn = true;
-            applyOutput(true);
-        }
-    }
-
-    bool isBusy() const { return !finished; }
-    bool getOutputIsOn() const { return outputIsOn; }
-
-private:
-    void applyOutput(bool on)
-    {
-        outputIsOn = on;
-        gpio_set_level(gpio, on ? 1 : 0);
-    }
-
-    gpio_num_t gpio = GPIO_NUM_0;
-    BlinkPattern pattern = INDICATOR_BLINK_OFF;
-    uint16_t repeatsDone = 0;
-    bool phaseIsOn = false;
-    bool finished = true;
-    bool outputIsOn = false;
-    uint32_t timestampPhaseStartMs = 0;
-};
-
-
 //===============================
 //====== Signal -> pattern ======
 //===============================
@@ -288,10 +207,13 @@ static BlinkPattern statusToPattern(StatusIndication status)
 //===============================
 static void indicatorTask(void *param)
 {
-    IndicatorChannel buzzerChannel;
-    IndicatorChannel faultLedChannel;
-    buzzerChannel.init(pinConfig.buzzerGpio);
-    faultLedChannel.init(pinConfig.faultLedGpio);
+    // The channels only compute what the outputs should be; driving the pins is done here.
+    BlinkChannel buzzerChannel;
+    BlinkChannel faultLedChannel;
+    gpio_set_direction(pinConfig.buzzerGpio, GPIO_MODE_OUTPUT);
+    gpio_set_direction(pinConfig.faultLedGpio, GPIO_MODE_OUTPUT);
+    gpio_set_level(pinConfig.buzzerGpio, 0);
+    gpio_set_level(pinConfig.faultLedGpio, 0);
 
     // what the LED is showing right now, so it is only restarted when it actually changes
     LedPriority activeLedPriority = LedPriority::BUZZER_MIRROR;
@@ -376,6 +298,10 @@ static void indicatorTask(void *param)
         ledPatternInitialised = true;
 
         faultLedChannel.update(nowMs);
+
+        // apply the computed states to the actual outputs
+        gpio_set_level(pinConfig.buzzerGpio, buzzerChannel.getOutputIsOn() ? 1 : 0);
+        gpio_set_level(pinConfig.faultLedGpio, faultLedChannel.getOutputIsOn() ? 1 : 0);
 
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(INDICATOR_TICK_MS));
     }
