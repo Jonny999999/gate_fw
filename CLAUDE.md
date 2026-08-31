@@ -53,3 +53,8 @@ These apply to all firmware code in this repo.
 6. **State machines:** one `case` per state, each state's entry/exit conditions commented,
    and a `*_str[]` lookup table kept in sync with the enum for logging.
 7. Keep comments in English and consistent in tone with the surrounding file.
+8. **Any periodic task delay must be at least one FreeRTOS tick.** With
+   `CONFIG_FREERTOS_HZ=100` that is 10 ms, and `pdMS_TO_TICKS()` silently rounds anything
+   shorter down to **zero** — which makes `vTaskDelayUntil()` assert and the board boot-loop.
+   Guard every such constant with a `static_assert(pdMS_TO_TICKS(X) > 0, ...)`, as
+   `input.cpp` and `indicator.cpp` do.

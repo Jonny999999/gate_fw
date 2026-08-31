@@ -14,9 +14,11 @@ extern "C" {
 //===============================
 //========= Parameters ==========
 //===============================
-// Tick of the indicator task. Determines how precisely the on/off times are hit;
-// 5 ms is well below the shortest signal in use (20 ms).
-#define INDICATOR_TICK_MS 5
+// Tick of the indicator task. Determines how precisely the on/off times are hit.
+// Must be at least one FreeRTOS tick (10 ms at CONFIG_FREERTOS_HZ=100) - see the
+// static_assert below. That also sets the resolution of the beep timings, which is the same
+// 10 ms the previous firmware had, since its buzzer used vTaskDelay() per beep.
+#define INDICATOR_TICK_MS 10
 
 // Lowest priority of all application tasks: this only drives a buzzer and an LED, so it
 // must never delay input sampling (8), the control logic or gate handling (both 5).
@@ -25,6 +27,13 @@ extern "C" {
 #define INDICATOR_TASK_PRIORITY 3
 #define INDICATOR_TASK_STACK_SIZE 2560
 #define BUZZER_QUEUE_LENGTH 20
+
+// vTaskDelayUntil() asserts on a delay of zero ticks, which is what a period shorter than
+// one tick silently becomes: pdMS_TO_TICKS(5) is (5 * 100) / 1000 = 0 at 100 Hz. Catch that
+// here instead of in a boot loop on the gate.
+static_assert(pdMS_TO_TICKS(INDICATOR_TICK_MS) > 0,
+              "INDICATOR_TICK_MS is shorter than one FreeRTOS tick "
+              "(1000 / CONFIG_FREERTOS_HZ ms) - it would round down to a zero delay");
 
 // Mirror the buzzer on the fault LED whenever no fault and no status needs it.
 // Off by default: the GREEN panel LED is already wired in parallel with the buzzer, so the

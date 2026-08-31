@@ -15,8 +15,10 @@ extern "C" {
 //===============================
 //========= Parameters ==========
 //===============================
-// How often all inputs are sampled. Short and, thanks to the dedicated task, jitter-free.
-#define INPUT_SAMPLE_INTERVAL_MS 5
+// How often all inputs are sampled. Thanks to the dedicated task this is jitter-free.
+// Must be at least one FreeRTOS tick (10 ms at CONFIG_FREERTOS_HZ=100) - see the
+// static_assert below.
+#define INPUT_SAMPLE_INTERVAL_MS 10
 
 // How long a button level has to be stable before a change is accepted.
 // (was gpio_evaluatedSwitch::minOnMs / minOffMs = 40 ms)
@@ -47,6 +49,13 @@ extern "C" {
 #define INPUT_TASK_STACK_SIZE 3072
 
 #define INPUT_EVENT_QUEUE_LENGTH 20
+
+// vTaskDelayUntil() asserts on a delay of zero ticks, which is what a period shorter than
+// one tick silently becomes: pdMS_TO_TICKS(5) is (5 * 100) / 1000 = 0 at 100 Hz. Catch that
+// here instead of in a boot loop on the gate.
+static_assert(pdMS_TO_TICKS(INPUT_SAMPLE_INTERVAL_MS) > 0,
+              "INPUT_SAMPLE_INTERVAL_MS is shorter than one FreeRTOS tick "
+              "(1000 / CONFIG_FREERTOS_HZ ms) - it would round down to a zero delay");
 
 
 //===============================

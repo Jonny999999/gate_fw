@@ -41,8 +41,9 @@ static void beginTest(const char *name)
 //===============================
 //===== Simulated hardware ======
 //===============================
-// Interval the input task samples at
-static const uint32_t kSampleIntervalMs = 5;
+// Interval the input task samples at - must mirror INPUT_SAMPLE_INTERVAL_MS, otherwise the
+// tests verify timing the firmware never actually runs at
+static const uint32_t kSampleIntervalMs = 10;
 // Long press threshold used by the open button
 static const uint32_t kLongPressMs = 800;
 // Second, longer threshold: keep holding to escalate to "and close again afterwards"
