@@ -83,7 +83,13 @@ public:
     GateState getState() const {return state;};
     bool getIsIdling() const {return state == IDLE_FULLY_OPEN || state == IDLE_FULLY_CLOSED || state == IDLE_PARTIALLY_OPEN;};
     bool getIsMoving() const {return state == MOVING_CLOSING || state == MOVING_OPENING || state == WAITING_FOR_VFD_STARTUP;};
-    bool getIsClosing() const {return state == MOVING_CLOSING;};
+    // "closing, or just about to": also true while the VFD is still booting for a closing
+    // movement. The light-barrier safety check uses this, and it must react before the
+    // motor turns, not after.
+    bool getIsClosing() const {
+        return state == MOVING_CLOSING ||
+               (state == WAITING_FOR_VFD_STARTUP && nextDirection == false);
+    };
 
     // Error reporting.
     // ERROR_STATE only lasts a single handle() cycle before the gate returns to

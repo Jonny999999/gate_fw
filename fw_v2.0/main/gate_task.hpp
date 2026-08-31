@@ -46,7 +46,14 @@ void gateSendCommand(GateCommandType type, uint32_t param = 0);
 // sending a command, see the gates still idle, and conclude the movement had finished.
 bool gatesAreIdle();
 
-// True while at least one gate is running in the closing direction.
+// True once the gate task stopped a closing movement because the light barrier was
+// interrupted. The stop itself already happened - this only tells the control task to take
+// over with the countdown / resume / give-up handling.
+// Cleared by CONTINUE_CLOSING and CANCEL.
+bool gatesArePausedByLightBarrier();
+
+// True while at least one gate is running in the closing direction
+// (including while the VFD is still booting for a closing movement).
 bool anyGateIsClosing();
 
 // True if a gate reported an error since the last clearGateErrors(). Latched, because

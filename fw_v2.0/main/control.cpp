@@ -222,6 +222,26 @@ void controlTask(void *param)
         // modbus calls further down block this loop for a few hundred milliseconds.
         const InputState input = inputPoll();
 
+        //--- the gate task stopped a closing movement because of the light barrier ---
+        // The stop itself already happened, in the task that owns the motors (see
+        // handleLightBarrierSafety() in gate_task.cpp). This only picks up the handling.
+        //
+        // Checked here rather than inside a single state on purpose: the whole point of
+        // doing the stop in the gate task is that it does not depend on this state machine
+        // being where we expect. Reacting to it from only one state would put that
+        // assumption straight back in.
+        if (gatesArePausedByLightBarrier() && ctlState != ControlState::CLOSING_MOVEMENT_PAUSED)
+        {
+            ESP_LOGE(TAG_CTL, "Gate was stopped by the light barrier (was in state %s) => waiting for the way to clear",
+                     controlStateStr[(int)ctlState]);
+            indicatorBeep(BuzzerSignal::BARRIER_BLOCKED);
+            // start the obstruction timeout now, not from whenever the barrier last changed,
+            // otherwise it can expire immediately
+            timestampLastBarrierChange = millis();
+            autoCloseIsArmed = false; // an interrupted close is not resumed automatically later
+            ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
+        }
+
         // State machine - control with button input according to current state
         switch (ctlState)
         {
@@ -418,17 +438,6 @@ void controlTask(void *param)
                 // note: controlState gets switched in above case when WAIT_LOCK is actually over (both gates IDLE)
             }
 
-            //--- light-barrier obstructed while closing ---
-            else if (anyGateIsClosing() && lightBarrierIsObstructed(input))
-            {
-                indicatorBeep(BuzzerSignal::BARRIER_BLOCKED);
-                ESP_LOGE(TAG_CTL, "Lightbarrier got obstructed while a gate is closing => pausing movement");
-                ctlState = ControlState::CLOSING_MOVEMENT_PAUSED;
-                // additionally manually reset timestamp so the timeout starts when entering the PAUSED mode 
-                // otherwise immediately timeouts when it was already active before pressing start button (e.g stand in gate some time and start)
-                timestampLastBarrierChange = millis();
-                gateSendCommand(GateCommandType::PAUSE);
-            }
             break;
 
             //-------------------------------------

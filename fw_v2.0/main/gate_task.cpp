@@ -1,5 +1,7 @@
 #include "gate_task.hpp"
 
+#include "input.hpp"
+
 #include <atomic>
 
 extern "C" {
@@ -53,6 +55,10 @@ static std::atomic<int> pendingCommandCount{0};
 // pendingCommandCount covers the window right after a command was sent.
 static std::atomic<bool> publishedGatesAreIdle{true};
 static std::atomic<bool> publishedAnyGateIsClosing{false};
+// Set when the gate task stopped a closing movement because of the light barrier.
+// The control task takes it from here (countdown, resume, give up), but the stop itself
+// does not depend on the control task being in any particular state.
+static std::atomic<bool> publishedPausedByLightBarrier{false};
 
 
 //===============================
@@ -67,7 +73,9 @@ static const char *gateCommandToString(GateCommandType type)
     case GateCommandType::STOP:               return "STOP";
     case GateCommandType::PAUSE:              return "PAUSE";
     case GateCommandType::CANCEL:             return "CANCEL";
-    case GateCommandType::CONTINUE_CLOSING:   return "CONTINUE_CLOSING";
+    case GateCommandType::CONTINUE_CLOSING:
+        // the control task decided the way is clear again
+        publishedPausedByLightBarrier.store(false);   return "CONTINUE_CLOSING";
     case GateCommandType::SET_TARGET_RUN_TIME:return "SET_TARGET_RUN_TIME";
     default:                                  return "UNKNOWN";
     }
@@ -96,10 +104,13 @@ static void applyCommandToGate(Gate *gate, const GateCommand &command)
         break;
 
     case GateCommandType::CANCEL:
+        publishedPausedByLightBarrier.store(false);
         gate->cancel();
         break;
 
     case GateCommandType::CONTINUE_CLOSING:
+        // the control task decided the way is clear again
+        publishedPausedByLightBarrier.store(false);
         // Two situations end up here:
         //  - the gate was paused mid-movement  -> resume where it left off
         //  - the gate never started, because the barrier was already obstructed when the
@@ -117,6 +128,57 @@ static void applyCommandToGate(Gate *gate, const GateCommand &command)
 }
 
 
+// Publish everything the control task is allowed to see about the gates.
+// Must be called whenever the gate state may have changed - in particular BEFORE
+// pendingCommandCount is decremented, see the note in gateTask().
+static void publishGateState()
+{
+    publishedGatesAreIdle.store(gateA->getIsIdling() && gateB->getIsIdling());
+    publishedAnyGateIsClosing.store(gateA->getIsClosing() || gateB->getIsClosing());
+}
+
+
+//=====================================================
+//========= Light barrier safety (layer 1) ============
+//=====================================================
+// A closing gate must stop as soon as the light barrier is interrupted. That decision is
+// made HERE, in the task that owns the motors, and not in the control state machine:
+//
+//  - it runs every cycle regardless of what the control task believes is going on. A bug in
+//    the control state machine can no longer disable the safety stop, which is exactly what
+//    happened once (control left MOVING_TO_TARGET early and stopped checking the barrier).
+//  - it reads the barrier level directly from the input task, so it does not depend on any
+//    event being delivered or consumed.
+//
+// The control task still decides what happens NEXT - warn, wait, resume or give up - but it
+// is no longer what stands between an interrupted barrier and the motor stopping.
+static void handleLightBarrierSafety()
+{
+    if (!inputLightBarrierIsObstructed())
+        return;
+
+    // note: getIsClosing() is also true while the VFD is still booting for a closing
+    // movement, so the gate is stopped before the motor ever starts turning
+    bool pausedAnyGate = false;
+    if (gateA->getIsClosing())
+    {
+        gateA->pause();
+        pausedAnyGate = true;
+    }
+    if (gateB->getIsClosing())
+    {
+        gateB->pause();
+        pausedAnyGate = true;
+    }
+
+    if (pausedAnyGate)
+    {
+        ESP_LOGE(TAG_GATE_TASK, "LIGHT BARRIER interrupted while closing => movement stopped");
+        publishedPausedByLightBarrier.store(true);
+    }
+}
+
+
 //===============================
 //========== Gate task ==========
 //===============================
@@ -126,7 +188,12 @@ static void gateTask(void *param)
 
     while (true)
     {
-        // 1. carry out everything the control task asked for
+        // 1. safety first: stop a closing gate if the light barrier is interrupted.
+        //    Before the commands, so an obstruction can never be overtaken by a close
+        //    request that arrived in the same cycle.
+        handleLightBarrierSafety();
+
+        // 2. carry out everything the control task asked for
         GateCommand command;
         while (xQueueReceive(gateCommandQueue, &command, 0) == pdTRUE)
         {
@@ -134,17 +201,22 @@ static void gateTask(void *param)
                      gateCommandToString(command.type), command.param);
             applyCommandToGate(gateA, command);
             applyCommandToGate(gateB, command);
-            // only now the command counts as done - see pendingCommandCount
+
+            // Publish BEFORE the command stops counting as pending.
+            // The other order is a race: pendingCommandCount would already be 0 while the
+            // published state still described the situation before the command, and the
+            // control task would conclude the movement had finished. handle() below blocks
+            // on modbus for tens of milliseconds, which made that window easy to hit.
+            publishGateState();
             pendingCommandCount--;
         }
 
-        // 2. step both gate state machines (this is where the blocking modbus traffic is)
+        // 3. step both gate state machines (this is where the blocking modbus traffic is)
         gateB->handle();
         gateA->handle();
 
-        // 3. publish what the control task is allowed to see
-        publishedGatesAreIdle.store(gateA->getIsIdling() && gateB->getIsIdling());
-        publishedAnyGateIsClosing.store(gateA->getIsClosing() || gateB->getIsClosing());
+        // 4. publish what the control task is allowed to see
+        publishGateState();
 
         vTaskDelay(pdMS_TO_TICKS(GATE_HANDLE_INTERVAL_MS));
     }
@@ -194,6 +266,12 @@ bool gatesAreIdle()
 bool anyGateIsClosing()
 {
     return publishedAnyGateIsClosing.load();
+}
+
+
+bool gatesArePausedByLightBarrier()
+{
+    return publishedPausedByLightBarrier.load();
 }
 
 

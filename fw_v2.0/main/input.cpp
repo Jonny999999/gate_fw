@@ -258,3 +258,9 @@ InputState inputPoll()
 
     return state;
 }
+
+
+bool inputLightBarrierIsObstructed()
+{
+    return lightBarrierIsObstructed.load();
+}

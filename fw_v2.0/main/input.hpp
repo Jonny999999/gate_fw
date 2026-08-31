@@ -51,4 +51,10 @@ void inputStart(const InputPinConfig &pins);
 
 // Collect everything that happened since the previous call.
 // Non-blocking, intended to be called once per control loop iteration.
+// Note: this DRAINS the event queue, so exactly one task may call it.
 InputState inputPoll();
+
+// Current light-barrier level, without touching the event queue.
+// Safe to call from any task and as often as wanted - used by the gate task for its own
+// safety check, independently of the control task.
+bool inputLightBarrierIsObstructed();
