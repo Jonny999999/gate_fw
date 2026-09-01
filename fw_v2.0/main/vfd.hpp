@@ -33,6 +33,11 @@ public:
 
     bool isRunning() const; // get current cached state
 
+    // Check whether the drive is powered and answering. Only meaningful once its relay has
+    // been on for at least the VFD startup delay - not at construction time, when the relay
+    // is still off.
+    esp_err_t probe();
+
 
 private:
     uint8_t uart_num;  // UART port number

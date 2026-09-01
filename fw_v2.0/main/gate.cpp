@@ -32,15 +32,54 @@ Gate::Gate(const char *name,
                                      vfd(vfd),
                                      runDurationMs(runDurationMs),
 
-                                     state(IDLE_FULLY_CLOSED), relayTimeoutActive(false), relayOn(false), positionPercent(0.0f)
+                                     state(IDLE_PARTIALLY_OPEN), relayTimeoutActive(false), relayOn(false), positionPercent(0.0f)
+                                     // note: state and positionPercent are set properly from the limit switches in the body
 {
     gpio_set_direction(kLimitSwitchOpenGpio, GPIO_MODE_INPUT);
     gpio_set_direction(kLimitSwitchClosedGpio, GPIO_MODE_INPUT);
     gpio_set_direction(kRelayPinGpio, GPIO_MODE_OUTPUT);
-    // Initialize previous switch states.
-    prevOpenSwitchState = checkLimitSwitchOpenActive();
-    prevClosedSwitchState = checkLimitSwitchClosedActive();
-    ESP_LOGW(name, "GPIO pins and variables initialized.");
+    gpio_set_level(kRelayPinGpio, 0); // VFD stays unpowered until a movement is requested
+
+    // Determine the actual starting state from the limit switches.
+    // The state used to be hard-coded to IDLE_FULLY_CLOSED, so whenever the gate was not
+    // actually closed the first handle() "discovered" the difference and reported it as a
+    // limit switch change - beeping on every boot. That is the normal case right after
+    // flashing, which requires the east gate to be slightly open.
+    const bool openSwitchActive = (gpio_get_level(kLimitSwitchOpenGpio) == kLimitSwitchOpen_ActiveLevel);
+    const bool closedSwitchActive = (gpio_get_level(kLimitSwitchClosedGpio) == kLimitSwitchClosed_ActiveLevel);
+    prevOpenSwitchState = openSwitchActive;
+    prevClosedSwitchState = closedSwitchActive;
+
+    if (openSwitchActive && closedSwitchActive)
+    {
+        // Physically impossible - a switch or its wiring is broken. Assume the gate is
+        // somewhere in between, which is the assumption that allows movement in both
+        // directions; the limit switches are checked again before and during every move.
+        ESP_LOGE(name, "BOTH limit switches report active at startup - check switches/wiring!");
+        state = IDLE_PARTIALLY_OPEN;
+        positionPercent = 50.0f;
+    }
+    else if (openSwitchActive)
+    {
+        state = IDLE_FULLY_OPEN;
+        positionPercent = 100.0f;
+    }
+    else if (closedSwitchActive)
+    {
+        state = IDLE_FULLY_CLOSED;
+        positionPercent = 0.0f;
+    }
+    else
+    {
+        // Somewhere in between - the real position is unknown until a limit switch is
+        // reached, so the estimate is a placeholder. Every full movement runs against a
+        // limit switch, which recalibrates it.
+        state = IDLE_PARTIALLY_OPEN;
+        positionPercent = 50.0f;
+    }
+
+    ESP_LOGW(name, "GPIO pins and variables initialized - starting in state %s (pos ~%.0f%%)",
+             GateState_str[(int)state], positionPercent);
     // initially start VFD immediately after startup (?):
     // startRelay();
 }

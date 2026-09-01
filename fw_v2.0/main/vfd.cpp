@@ -23,16 +23,28 @@ static const char *TAG = "VFD";
 
 // Constructor
 VFD::VFD(uint8_t slave_addr) : slave_addr(slave_addr), frequency(0), is_running(false) {
-    // Perform a self-test by attempting to read the frequency
+    // Note: deliberately no communication with the drive here.
+    // The VFDs are powered through the relays, which are OFF at boot by design, so any
+    // register read at construction time is guaranteed to time out. It used to do exactly
+    // that and reported "Failed to initialize VFD" on every single start - an error message
+    // for the completely normal case, which is worse than no message at all.
+    // Use probe() once the relay has been on long enough if the drive should be checked.
+    ESP_LOGI(TAG, "VFD %d created (not contacted yet - powered via relay)", slave_addr);
+}
+
+
+esp_err_t VFD::probe() {
+    // Read back the frequency register to confirm the drive is powered and talking.
+    // Only meaningful once the relay has been on for at least DELAY_VFD_STARTUP.
     uint16_t reg_value = 0;
     esp_err_t status = read_modbus_register(slave_addr, VFD_REG_FREQUENCY, &reg_value);
-    
     if (status == ESP_OK) {
-        frequency = reg_value; // Cache the initial frequency value
-        ESP_LOGI(TAG, "VFD %d initialized successfully. Initial frequency: %d Hz.", slave_addr, frequency);
+        frequency = reg_value / 10;
+        ESP_LOGI(TAG, "VFD %d responded, frequency register = %d", slave_addr, reg_value);
     } else {
-        ESP_LOGE(TAG, "Failed to initialize VFD with address %d. Could not read frequency. Error: 0x%x", slave_addr, status);
+        ESP_LOGE(TAG, "VFD %d did not respond. Error: 0x%x", slave_addr, status);
     }
+    return status;
 }
 
 
