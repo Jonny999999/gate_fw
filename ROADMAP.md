@@ -367,6 +367,48 @@ and is the only one that had to move.
       speed actually sent to the drives came from a different constant saying 40, which is
       what the run durations in `main.cpp` were measured against.
 
+#### First hardware test (2026-09-01) — it works, and here is what it taught
+The profile runs on the gate. Three things only showed up there:
+
+- [x] **The final approach barely happened.** It is timed against the expected end, and the
+      expected end came from the hand-measured `runDurationMs`, which was 13 % (west) and
+      21 % (east) too long — so the "last 1500 ms" window mostly lay past where the gate
+      actually stops. The east gate effectively never slowed. **The rail is now measured**
+      on every limit-to-limit run and used from then on (`effectiveFullTravelMs()`); the
+      configured values are only a starting point until the first full movement.
+      Real travel: west 8826, east 9123 (against 10000 / 11000 configured).
+- [x] **Every partial movement crawled.** The approach was timed against the target as well
+      as the limit switch, and the pedestrian gap is shorter than the two slow phases put
+      together, so it ran slowly end to end and got no benefit from the higher speed. Only
+      the limit switch matters now: a target stop needs no approach, the motor just stops.
+- [x] **The backstop no longer held.** A fixed 15 s could not cover a full movement run
+      entirely at the slow speed (14.6 s — reachable whenever the position estimate says
+      "nearly there"), and the target distance itself needed 20.8 s at that speed, so a
+      missed limit switch hit the error path instead of the clean stop B11 guarantees. The
+      backstop is derived from the target distance and the slowest speed now, and the
+      overtravel allowance drops 5000 → 2000 travel-ms because at the slow speed the old
+      value was 8 s of pushing against the end stop.
+- [x] **An uncalibrated position plus a high speed is worse than no feature at all.** After
+      a boot with the gate parked mid-rail the estimate can put the limit switch further
+      away than it is, so the gate arrives in the fast phase — at 75 Hz that is 1.9× the
+      speed it ran at for years, 3.5× the energy, into the stop this feature exists to
+      protect. Until a limit switch confirms the position the gate is capped at the
+      reference speed.
+
+**Open, and worth settling before a long-term test:**
+
+- [ ] **`VFD_FREQUENCY_FULL_HZ` is 75, but `-1.7-` Maximum frequency is documented as 70.**
+      If the drives still hold 70 they are clamping, and the distance bookkeeping is then
+      wrong by ~7 % — invisibly, because the measured travel absorbs it into a consistently
+      larger number. Either raise `-1.7-` on both drives and note it in `doc/vfd/`, or drop
+      the constant to 70.
+- [ ] **The learned travel is RAM only** — every reboot falls back to the constants in
+      `main.cpp`, and the first movement afterwards runs on those. That is deliberate for
+      now (it is one value per gate, and it re-learns on the first full run), but it is the
+      obvious NVS candidate if the numbers turn out stable.
+- [ ] **Both current limits are still the threshold measured at 40 Hz**, and the range is
+      now 25–75 Hz. This is the most likely source of a nuisance fault in daily use.
+
 #### What the hardware test has to answer
 The open questions are all physical, and none of them are answered by having encoders —
 they are the reason to test now rather than later:
