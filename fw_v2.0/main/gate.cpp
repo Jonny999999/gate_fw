@@ -271,17 +271,20 @@ void Gate::reportFullTravelIfMeasured() {
         ((float)measuredDistanceMs - (float)previousFullTravelMs) / previousFullTravelMs * 100.0f;
 
     // Running means, computed in place so no history has to be kept.
+    // The weight is capped at kFullTravelAverageRuns, which makes this a moving average
+    // once that many runs are in - see the note there.
     measuredFullTravelCount++;
-    measuredFullTravelAverageMs += ((int32_t)measuredMs - (int32_t)measuredFullTravelAverageMs)
-                                   / (int32_t)measuredFullTravelCount;
-    measuredFullTravelDistanceMs += ((int32_t)measuredDistanceMs - (int32_t)measuredFullTravelDistanceMs)
-                                    / (int32_t)measuredFullTravelCount;
+    const int32_t weight = (int32_t)std::min(measuredFullTravelCount, kFullTravelAverageRuns);
+    measuredFullTravelAverageMs += ((int32_t)measuredMs - (int32_t)measuredFullTravelAverageMs) / weight;
+    measuredFullTravelDistanceMs += ((int32_t)measuredDistanceMs - (int32_t)measuredFullTravelDistanceMs) / weight;
 
     ESP_LOGW(name, "FULL TRAVEL measured: %lu ms of travel (%lu ms wall clock), "
-                   "was working with %lu -> %+.1f%%. Now using %lu ms (average of %lu runs)",
+                   "was working with %lu -> %+.1f%%. Now using %lu ms of travel "
+                   "(%lu ms wall clock), averaged over %lu of %lu runs",
              (unsigned long)measuredDistanceMs, (unsigned long)measuredMs,
              (unsigned long)previousFullTravelMs, deviationPercent,
-             (unsigned long)effectiveFullTravelMs(), (unsigned long)measuredFullTravelCount);
+             (unsigned long)effectiveFullTravelMs(), (unsigned long)measuredFullTravelAverageMs,
+             (unsigned long)weight, (unsigned long)measuredFullTravelCount);
 }
 
 

@@ -226,6 +226,12 @@ private:
     bool movementStartedAtOppositeLimit = false;  // set when the motor starts, see startMovement()
     uint32_t measuredFullTravelCount = 0;         // how many full runs have been measured
     uint32_t measuredFullTravelAverageMs = 0;     // running mean of those, wall-clock ms
+    // Number of runs the means are averaged over once they have settled. A plain running
+    // mean over every run ever measured stops moving: after a few thousand movements a new
+    // measurement shifts it by well under a millisecond, so it would freeze at whatever the
+    // gate was like in its first weeks instead of following it. Capping the weight turns it
+    // into a moving average that keeps tracking - which is the whole point of measuring.
+    static constexpr uint32_t kFullTravelAverageRuns = 20;
     // Running mean of the same runs measured as DISTANCE (travel-ms at kSpeedReferenceHz).
     // This is the one the speed profile needs: wall-clock time depends on which speeds the
     // movement happened to use, distance does not.
