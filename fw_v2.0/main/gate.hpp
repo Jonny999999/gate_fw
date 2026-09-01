@@ -106,30 +106,34 @@ private:
     static constexpr float kCurrentLimitSlowAmpere = VFD_CURRENT_LIMIT_SLOW_AMPERE;
     static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
 
-    // Hard safety backstop: a movement that has not finished by then is aborted with an error.
-    // The only constant in the firmware that is genuinely wall-clock rather than distance,
-    // so it is also the only one that has to be checked whenever a speed changes.
-    // Deliberately left at the value that has been in service since V2.0 - it still fits:
-    //
-    //   east gate, 11000 ms of rail, profile on at 60/25 Hz
-    //     slow  2200 * 40/25 = 3520 ms  +  fast 8800 * 40/60 = 5867 ms  ~  9.4 s
-    //   same with the full speed back at 40 Hz          3520 + 8800  ~ 12.3 s
-    //   profile off, 40 Hz (what ran until now)                        ~ 11.0 s
-    //
-    // The tightest of those still leaves 2.7 s. Recheck this arithmetic before lowering
-    // VFD_FREQUENCY_FULL_HZ or widening the slow phases much further.
-    static constexpr uint32_t kMovementTimeoutMs = 15000;
+    // The slowest speed a movement can legitimately run at. What the wall-clock backstop
+    // below has to allow for - a movement is not late just because it ran slowly.
+#if VARIABLE_SPEED_ENABLED
+    static constexpr uint16_t kSlowestSpeedHz = kSpeedSlowHz;
+#else
+    // no profile, but an uncalibrated gate is still capped to the reference speed
+    static constexpr uint16_t kSlowestSpeedHz = std::min(kSpeedFullHz, kSpeedReferenceHz);
+#endif
 
     // Guaranteed gap between the target run time and the safety backstop.
-    // Previously 'runDurationMs + 5000' could equal or exceed kMovementTimeoutMs (exactly
-    // equal for the west gate), so a full movement that missed its limit switch hit the
-    // timeout branch at the very same instant and reported an error instead of simply
-    // stopping. (ROADMAP.md B11)
+    // A full movement that misses its limit switch should stop cleanly on its target
+    // distance, not trip the error path at the same instant. (ROADMAP.md B11)
     static constexpr uint32_t kMovementTimeoutMarginMs = 2000;
 
-    // How much longer than the measured travel time a full open/close is allowed to run,
-    // so the limit switch is definitely reached.
-    static constexpr uint32_t kFullMovementExtraTimeMs = 5000;
+    // How much further than the full travel a full open/close is allowed to run, so the
+    // limit switch is definitely reached.
+    //
+    // Was 5000, sized for a hand-measured travel constant that turned out to be 13-21% off.
+    // effectiveFullTravelMs() is measured now and errs on the long side by construction (the
+    // integration counts each commanded speed from the moment it was asked for, while the
+    // drive still has to ramp to it), so the allowance no longer has to cover a bad guess -
+    // and it is the distance the gate may spend pushing against the end stop if a limit
+    // switch fails. At the slow speed 5000 would have been 8 s of that.
+    static constexpr uint32_t kFullMovementExtraTimeMs = 2000;
+
+    // Absolute ceiling for the computed backstop, so a nonsense learned travel value can
+    // never stretch it indefinitely.
+    static constexpr uint32_t kMovementTimeoutCeilingMs = 25000;
 
     // ==== Movement distance bookkeeping ====
     // A movement's target is a DISTANCE, not a wall-clock duration - expressed as the
@@ -265,11 +269,34 @@ private:
     // that: open completely, then set a target run time).
     void recomputeExpectedTravelDistance();
 
-    // Target run time for a full open / close: long enough to reach the limit switch,
-    // but always clearly below the safety backstop.
+    // Target run time for a full open / close: far enough to reach the limit switch.
+    // A DISTANCE, so it does not depend on the speeds the movement happens to use.
     uint32_t getFullMovementRunTimeMs() const {
-        return std::min(runDurationMs + kFullMovementExtraTimeMs,
-                        kMovementTimeoutMs - kMovementTimeoutMarginMs);
+        return effectiveFullTravelMs() + kFullMovementExtraTimeMs;
+    };
+
+    // Hard safety backstop: a movement that has not finished by then is aborted with an
+    // error. The one genuinely wall-clock quantity in the movement logic, which is why it
+    // has to be derived rather than fixed: how long the target distance takes depends on
+    // the speed, and it is now up to 1.6x longer at the slow speed than at the reference.
+    //
+    // A fixed 15000 no longer worked. Two ways it broke:
+    //   - a full movement whose position estimate says "nearly there" runs the whole rail
+    //     at the slow speed: 9123 * 40/25 = 14.6 s, i.e. 0.4 s short of the old backstop.
+    //     Real case - a gate pushed open by hand from the closed switch reports 1%.
+    //   - the target distance itself was no longer reachable in time (13000 travel-ms at
+    //     the slow speed is 20.8 s), so the error path fired instead of the clean stop on
+    //     target that B11 was fixed to guarantee.
+    //
+    // Derived from the target distance at the slowest speed a movement can use, so that
+    // guarantee holds again by construction at any speed. Note this bounds nothing else:
+    // how far the gate may travel past a missed limit switch is kFullMovementExtraTimeMs,
+    // not this. The backstop only has to catch a drive that is not doing what it was told.
+    uint32_t getMovementTimeoutMs() const {
+        const uint64_t worstCaseWallMs =
+            (uint64_t)getFullMovementRunTimeMs() * kSpeedReferenceHz / kSlowestSpeedHz;
+        return (uint32_t)std::min<uint64_t>(worstCaseWallMs + kMovementTimeoutMarginMs,
+                                            kMovementTimeoutCeilingMs);
     };
     // Log the real travel time if this movement ran from one limit switch to the other.
     // Called from handle() the moment the far limit switch is reached.

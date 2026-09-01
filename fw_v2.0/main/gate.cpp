@@ -416,7 +416,7 @@ void Gate::runTo(float target) {
         targetRunTimeMs = getFullMovementRunTimeMs();
     } else {
         float delta = std::abs(target - positionPercent);
-        targetRunTimeMs = (uint64_t)((delta / 100.0f) * runDurationMs );
+        targetRunTimeMs = (uint64_t)((delta / 100.0f) * effectiveFullTravelMs() );
     }
     if (target > positionPercent) {
         startMovement(true);
@@ -486,7 +486,7 @@ void Gate::closeCompletely() {
 void Gate::updateTargetRunTime(uint32_t ms) {
     // Clamp to what a full movement is allowed to take. Without this, enough repeated
     // presses (each adding BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS) produce a target longer
-    // than kMovementTimeoutMs, so the gate would stop with a MOVEMENT_TIMEOUT fault
+    // than a full movement, so the gate would stop with a MOVEMENT_TIMEOUT fault
     // instead of simply opening as far as it can.
     const uint32_t maxRunTimeMs = getFullMovementRunTimeMs();
     if (ms > maxRunTimeMs) {
@@ -635,7 +635,7 @@ void Gate::handle() {
         updateTravel();
         updateSpeedProfile();
         // timeout
-        if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
+        if ((currentTimeUs - timestampStartUs) >= ((uint64_t)getMovementTimeoutMs() * 1000))
         {
             ESP_LOGE(name, "Open movement timeout exceeded.");
             indicatorSetFault(FaultCode::MOVEMENT_TIMEOUT);
@@ -674,7 +674,7 @@ void Gate::handle() {
         // path that is busiest with it.
 
         // timeout
-        if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
+        if ((currentTimeUs - timestampStartUs) >= ((uint64_t)getMovementTimeoutMs() * 1000))
         {
             ESP_LOGE(name, "Close movement timeout exceeded.");
             indicatorSetFault(FaultCode::MOVEMENT_TIMEOUT);
