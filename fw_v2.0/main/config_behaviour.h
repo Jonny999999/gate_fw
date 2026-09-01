@@ -33,12 +33,18 @@
 #define RELAY_INACTIVITY_TIMEOUT_MS ((4UL*60 + 0)*60*1000UL)
 
 // Log the motor current (with the speed it was measured at) on every check while closing.
-// Enabled on this branch on purpose: the obstruction threshold below was measured at a
-// single speed, and what the motor draws at VFD_FREQUENCY_SLOW_HZ is exactly the number this
-// experiment still owes. See kCurrentLimitSlowAmpere.
+// Enabled on this branch on purpose: the thresholds below were measured at 40 Hz, and what
+// the motor draws at the other two speeds is exactly the number this experiment still owes.
 #define LOG_VFD_CURRENT_WHEN_CLOSING
 #define CURRENT_MONITORING_ENABLED
-#define DEFAULT_VFD_CURRENT_LIMIT 0.60
+
+// Motor current above which a closing gate is treated as obstructed.
+// One value per speed, because a V/f drive does not draw the same current for the same load
+// at a different frequency. Both still hold the threshold measured at 40 Hz - guessing the
+// others would either weaken the detection exactly where the gate is nearly closed, or
+// produce nuisance trips. Read them off the log lines above and set them from real numbers.
+#define VFD_CURRENT_LIMIT_AMPERE 0.60      // at VFD_FREQUENCY_FULL_HZ
+#define VFD_CURRENT_LIMIT_SLOW_AMPERE 0.60 // at VFD_FREQUENCY_SLOW_HZ
 
 //===============================
 //======= Gate speed ============

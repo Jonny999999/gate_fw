@@ -100,13 +100,10 @@ private:
     static constexpr uint16_t kSpeedSlowHz = VFD_FREQUENCY_SLOW_HZ;
     static constexpr uint32_t kSlowStartDistanceMs = GATE_SLOW_START_DISTANCE_MS;
     static constexpr uint32_t kSlowApproachDistanceMs = GATE_SLOW_APPROACH_DISTANCE_MS;
-    static constexpr float kCurrentLimitAmpere = DEFAULT_VFD_CURRENT_LIMIT;  // Max VFD current when closing for gate to stop
-    // Same threshold at the slow speed, until it has been measured. A V/f drive does not
-    // draw the same current for the same load at a different frequency, so this almost
-    // certainly wants its own value - but guessing one would either weaken the obstruction
-    // detection exactly where the gate is nearly closed, or produce nuisance trips. Read
-    // the LOG_VFD_CURRENT_WHEN_CLOSING output from a few runs and set it from that.
-    static constexpr float kCurrentLimitSlowAmpere = DEFAULT_VFD_CURRENT_LIMIT;
+    // Max VFD current when closing for the gate to stop - one per speed,
+    // see config_behaviour.h.
+    static constexpr float kCurrentLimitAmpere = VFD_CURRENT_LIMIT_AMPERE;
+    static constexpr float kCurrentLimitSlowAmpere = VFD_CURRENT_LIMIT_SLOW_AMPERE;
     static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
 
     // Hard safety backstop: a movement that has not finished by then is aborted with an error.
