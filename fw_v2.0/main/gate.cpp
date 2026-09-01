@@ -180,15 +180,21 @@ void Gate::recomputeExpectedTravelDistance() {
     const float fractionLeftPercent = nextDirection ? (100.0f - positionPercent) : positionPercent;
     const uint32_t distanceToLimitMs = (uint32_t)(fractionLeftPercent / 100.0f * effectiveFullTravelMs());
 
-    // Whichever comes first: the requested target, or the limit switch. A full movement
-    // deliberately targets MORE than the rail is long (getFullMovementRunTimeMs()) so the
-    // limit switch is the thing that stops it - so for those the limit switch wins here,
-    // which is exactly the end the final approach should be timed against.
-    expectedTravelDistanceMs = std::min((uint32_t)targetRunTimeMs,
-                                        travelledDistanceMs() + distanceToLimitMs);
+    // The LIMIT SWITCH, and only the limit switch. Not the requested target.
+    //
+    // Slowing down is about how the gate arrives at the mechanical end stop - that is what
+    // takes the abuse. A partial opening ends because the target distance was reached, with
+    // nothing in front of the gate: there the motor simply switches off and the drive's own
+    // deceleration ramp does the rest, exactly as it always has. Timing the approach against
+    // the target instead made every partial movement crawl for no reason - the pedestrian
+    // gap is shorter than the two slow phases together, so it ran slowly from end to end.
+    //
+    // A partial movement that happens to finish near a limit switch still slows down, which
+    // is correct: what matters is the distance to the stop, not why the gate is moving.
+    expectedTravelDistanceMs = travelledDistanceMs() + distanceToLimitMs;
 
-    ESP_LOGD(name, "Expecting this movement to end after %lu ms of travel (target %llu, %lu to the limit switch)",
-             (unsigned long)expectedTravelDistanceMs, targetRunTimeMs, (unsigned long)distanceToLimitMs);
+    ESP_LOGD(name, "Expecting the limit switch after %lu ms of travel (%lu from here); target is %llu",
+             (unsigned long)expectedTravelDistanceMs, (unsigned long)distanceToLimitMs, targetRunTimeMs);
 }
 
 
