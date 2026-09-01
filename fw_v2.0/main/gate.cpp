@@ -58,16 +58,19 @@ Gate::Gate(const char *name,
         ESP_LOGE(name, "BOTH limit switches report active at startup - check switches/wiring!");
         state = IDLE_PARTIALLY_OPEN;
         positionPercent = 50.0f;
+        // neither switch can be believed, so the position is a guess like any other
     }
     else if (openSwitchActive)
     {
         state = IDLE_FULLY_OPEN;
         positionPercent = 100.0f;
+        positionIsCalibrated = true;
     }
     else if (closedSwitchActive)
     {
         state = IDLE_FULLY_CLOSED;
         positionPercent = 0.0f;
+        positionIsCalibrated = true;
     }
     else
     {
@@ -78,8 +81,9 @@ Gate::Gate(const char *name,
         positionPercent = 50.0f;
     }
 
-    ESP_LOGW(name, "GPIO pins and variables initialized - starting in state %s (pos ~%.0f%%)",
-             GateState_str[(int)state], positionPercent);
+    ESP_LOGW(name, "GPIO pins and variables initialized - starting in state %s (pos ~%.0f%%, %s)",
+             GateState_str[(int)state], positionPercent,
+             positionIsCalibrated ? "from a limit switch" : "GUESSED - speed limited until a limit switch is reached");
     // initially start VFD immediately after startup (?):
     // startRelay();
 }
@@ -215,6 +219,18 @@ void Gate::updateSpeedProfile() {
     else if (expectedTravelDistanceMs < travelledDistanceMs() + kSlowApproachDistanceMs) {
         desiredSpeedHz = kSpeedSlowHz;
     }
+
+    // 3. and a cap while nothing has confirmed where the gate is.
+    //    The whole profile is timed against an estimated distance to the limit switch. When
+    //    that estimate is only a guess it can be wrong in the one direction that matters:
+    //    the gate reaches the end stop while still in the fast phase. Concretely, after a
+    //    reboot with the gate parked at ~70% an opening movement expects the switch at 50%
+    //    and meets it at full speed instead.
+    //    Running at the reference speed until a limit switch settles the question makes that
+    //    case no worse than the firmware that ran for years, rather than 1.9x faster into
+    //    the stop - which would be the opposite of what this feature is for.
+    if (!positionIsCalibrated)
+        desiredSpeedHz = std::min(desiredSpeedHz, kSpeedReferenceHz);
 
     setSpeed(desiredSpeedHz);
 #endif
@@ -651,6 +667,7 @@ void Gate::handle() {
             // measure before stop(), which spends ~100 ms on modbus
             reportFullTravelIfMeasured();
             positionPercent = 100.0f; // Calibrate position.
+            positionIsCalibrated = true;
             stop(false);
             state = IDLE_FULLY_OPEN;
             break;
@@ -690,6 +707,7 @@ void Gate::handle() {
             // measure before stop(), which spends ~100 ms on modbus
             reportFullTravelIfMeasured();
             positionPercent = 0.0f; // Calibrate position.
+            positionIsCalibrated = true;
             stop(false);
             state = IDLE_FULLY_CLOSED;
             break;
@@ -719,6 +737,8 @@ void Gate::handle() {
         {
             state = IDLE_PARTIALLY_OPEN;
             positionPercent = 99;
+            // 99% assumes a nudge; the gate may just as well have been pushed wide open.
+            positionIsCalibrated = false;
             ESP_LOGI(name, "Gate moved away from fully open position -> switching to IDLE_PARTIALLY_OPEN");
             #ifdef BEEP_AT_LIMIT_SW_CHANGE
             indicatorBeep(BuzzerSignal::LIMIT_SWITCH_REACHED);
@@ -731,6 +751,8 @@ void Gate::handle() {
         {
             state = IDLE_PARTIALLY_OPEN;
             positionPercent = 1;
+            // 1% assumes a nudge; the gate may just as well have been pushed wide open.
+            positionIsCalibrated = false;
             ESP_LOGW(name, "Gate moved away from fully closed position while off -> switching to IDLE_PARTIALLY_OPEN");
             #ifdef BEEP_AT_LIMIT_SW_CHANGE
             indicatorBeep(BuzzerSignal::LIMIT_SWITCH_REACHED);
@@ -743,6 +765,7 @@ void Gate::handle() {
         {
             state = IDLE_FULLY_OPEN;
             positionPercent = 100.0f;
+            positionIsCalibrated = true;
             ESP_LOGW(name, "Gate reached fully open position while off -> switching to IDLE_FULLY_OPEN");
             #ifdef BEEP_AT_LIMIT_SW_CHANGE
             indicatorBeep(BuzzerSignal::LIMIT_SWITCH_REACHED);
@@ -753,6 +776,7 @@ void Gate::handle() {
         {
             state = IDLE_FULLY_CLOSED;
             positionPercent = 0.0f;
+            positionIsCalibrated = true;
             ESP_LOGW(name, "Gate reached fully closed position while off -> switching to IDLE_FULLY_CLOSED");
             #ifdef BEEP_AT_LIMIT_SW_CHANGE
             indicatorBeep(BuzzerSignal::LIMIT_SWITCH_REACHED);

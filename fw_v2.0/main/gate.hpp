@@ -185,6 +185,16 @@ private:
     uint64_t timestampRelayTurnedOnUs = 0; // Timestamp the relay was last switched on
 
     float positionPercent;         // Current estimated position (0% = closed, 100% = open)
+    // Whether positionPercent traces back to a limit switch, or is only a guess.
+    //
+    // False after a boot with the gate parked somewhere in the middle (the normal state
+    // right after flashing, which needs the east gate slightly open), and again whenever a
+    // gate leaves a limit switch while the motor is off - it was pushed by hand, and how
+    // far is not knowable. In both cases the estimate can be wrong by any amount, so the
+    // final approach may simply not happen and the gate would meet the end stop at the full
+    // speed. See updateSpeedProfile(): until a limit switch confirms where the gate is, it
+    // runs no faster than the reference speed it ran at for years.
+    bool positionIsCalibrated = false;
     uint64_t lastPositionUpdateTimestampUs = 0; // Timestamp of last position update
 
     // Distance covered since the motor started turning (see above). Accumulated in
