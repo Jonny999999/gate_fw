@@ -30,11 +30,39 @@
 //        ran into: it wrapped and expired after ~37 minutes instead.)
 #define RELAY_INACTIVITY_TIMEOUT_MS ((4UL*60 + 0)*60*1000UL)
 
-// #define LOG_VFD_CURRENT_WHEN_CLOSING
+// Log the motor current (with the speed it was measured at) on every check while closing.
+// Enabled on this branch on purpose: the obstruction threshold below was measured at a
+// single speed, and what the motor draws at SLOW_VFD_FREQUENCY is exactly the number this
+// experiment still owes. See kCurrentLimitSlowAmpere.
+#define LOG_VFD_CURRENT_WHEN_CLOSING
 #define CURRENT_MONITORING_ENABLED
 #define DEFAULT_VFD_CURRENT_LIMIT 0.60
 
-#define DEFAULT_VFD_FREQUENCY 50 // motor speed in Hz
+//===============================
+//======= Gate speed ============
+//===============================
+// Motor speed in Hz. 40 Hz is what the gate has always actually run at - the constant used
+// to say 50 and was simply never read (see the note on kSpeedFullHz), while the movement
+// timings in main.cpp were measured against the 40 Hz the drive was really given.
+#define DEFAULT_VFD_FREQUENCY 40
+
+// Variable gate speed - PROOF OF CONCEPT, see ROADMAP 2.6.
+// Set to 0 to get exactly the previous behaviour back: one constant speed from standstill
+// to limit switch.
+//
+// The gate starts gently, runs at full speed in the middle, and slows down again for the
+// last stretch before the limit stop - which today takes the full 40 Hz on every single
+// movement and is the part of the mechanics that suffers for it.
+//
+// Deliberately time-based and crude. The two slow stretches are only a second or so of
+// travel each, and starting one too early merely costs a moment while starting one too
+// late costs nothing that is not already the case today - so the position estimate does
+// not have to be good, it only has to be roughly right. Encoders (ROADMAP 3.2) would make
+// it exact, but they are not a prerequisite for finding out whether the feature is worth
+// having at all.
+#define VARIABLE_SPEED_ENABLED 1
+#define SLOW_VFD_FREQUENCY 25 // speed for the gentle start and the final approach
+
 #define BEEP_AT_LIMIT_SW_CHANGE
 
 #define PAUSED_SWITCH_TO_IDLE_TIMEOUT_MS 30*1000
@@ -121,13 +149,40 @@ private:
     // and several comments still claim - the unused 'defaultFrequency' member below is what
     // that macro feeds, and nothing ever read it. The measured run durations in main.cpp
     // belong to THIS value.
-    static constexpr uint16_t kSpeedFullHz = 40;
+    static constexpr uint16_t kSpeedFullHz = DEFAULT_VFD_FREQUENCY;
+    static constexpr uint16_t kSpeedSlowHz = SLOW_VFD_FREQUENCY;
+
+    // Shape of the speed profile, given as DISTANCE (full-speed ms, see below) rather than
+    // wall-clock time - "the first 700 ms worth of travel", not "the first 700 ms".
+    // Distances, because that is what stays constant when the speed changes.
+    //
+    // A movement shorter than the sum of the two runs entirely at the slow speed, which is
+    // what happens to the pedestrian gap (1900 ms of travel). That is intentional: the gap
+    // ends up exactly as wide as before, it just opens more gently.
+    static constexpr uint32_t kSlowStartDistanceMs = 700;    // gentle start
+    static constexpr uint32_t kSlowApproachDistanceMs = 1500; // slow before the limit stop
     static constexpr float kCurrentLimitAmpere = DEFAULT_VFD_CURRENT_LIMIT;  // Max VFD current when closing for gate to stop
+    // Same threshold at the slow speed, until it has been measured. A V/f drive does not
+    // draw the same current for the same load at a different frequency, so this almost
+    // certainly wants its own value - but guessing one would either weaken the obstruction
+    // detection exactly where the gate is nearly closed, or produce nuisance trips. Read
+    // the LOG_VFD_CURRENT_WHEN_CLOSING output from a few runs and set it from that.
+    static constexpr float kCurrentLimitSlowAmpere = DEFAULT_VFD_CURRENT_LIMIT;
     static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
 
     // Hard safety backstop: a movement that has not finished by then is aborted with an error.
-    // Deliberately left at the value that has been in service since V2.0.
+    // The only constant in the firmware that is genuinely wall-clock rather than distance,
+    // which is why it is also the only one the speed profile forces to change: the two slow
+    // stretches add roughly (kSlowStartDistanceMs + kSlowApproachDistanceMs) *
+    // (kSpeedFullHz / kSpeedSlowHz - 1) ~ 1.3 s to every full movement. Raised by 3 s so
+    // the margin over a full run stays what it was at constant speed.
+    // 15000 is the value that has been in service since V2.0 - restored when the speed
+    // profile is switched off, so that path is unchanged.
+#if VARIABLE_SPEED_ENABLED
+    static constexpr uint32_t kMovementTimeoutMs = 18000;
+#else
     static constexpr uint32_t kMovementTimeoutMs = 15000;
+#endif
 
     // Guaranteed gap between the target run time and the safety backstop.
     // Previously 'runDurationMs + 5000' could equal or exceed kMovementTimeoutMs (exactly
@@ -172,7 +227,9 @@ private:
     // note: buzzer / LED are no longer reached through a pointer - the indicator task is
     // addressed by free functions from indicator.hpp
 
-    const float defaultFrequency = DEFAULT_VFD_FREQUENCY;  // Frequency (Hz) to use when running
+    // note: a 'defaultFrequency' member used to sit here, fed from DEFAULT_VFD_FREQUENCY.
+    //       Nothing ever read it - the speed really written to the drive came from a
+    //       separate constant with a different value. Removed; kSpeedFullHz is the one.
     const uint32_t runDurationMs;  // Full run duration (0% to 100%) in milliseconds
 
     // note: all members below are given a defined default here.
@@ -192,13 +249,21 @@ private:
     float positionPercent;         // Current estimated position (0% = closed, 100% = open)
     uint64_t lastPositionUpdateTimestampUs = 0; // Timestamp of last position update
 
-    // Distance covered since the motor started turning, in full-speed ms (see above).
+    // Distance covered since the motor started turning (see above). Accumulated in
+    // MICROseconds so the speed weighting does not lose a fraction of a millisecond on
+    // every cycle - the gate task steps this every 10 ms, and at the slow speed a
+    // millisecond-granular sum would drop a few percent of the travel over a movement.
     // Reset in startMovement() at the moment the motor actually starts, not when the
     // command is received - the VFD startup delay must not count as travel.
-    uint32_t travelledDistanceMs = 0;
+    uint64_t travelledDistanceUs = 0;
+    uint32_t travelledDistanceMs() const { return (uint32_t)(travelledDistanceUs / 1000); }
     // Speed the drive is currently asked to run at. Only ever changed through setSpeed(),
     // so updateTravel() can weight the elapsed time with the speed it was covered at.
     uint16_t currentSpeedHz = kSpeedFullHz;
+    // Where this movement is expected to end, as a distance from its start: the target, or
+    // the limit switch, whichever comes first. This is what the final approach is timed
+    // against - and the only place the position estimate is used for anything but logging.
+    uint32_t expectedTravelDistanceMs = 0;
 
     //--- measured travel time (diagnostic, ROADMAP 2.6) ---
     // A movement that starts on one limit switch and ends on the other has covered the
@@ -232,12 +297,21 @@ private:
     void startRelay();
     void softStopRelay();
     void forceStopRelay();
-    // Integrate the time since the last call into travelledDistanceMs and positionPercent,
+    // Integrate the time since the last call into travelledDistanceUs and positionPercent,
     // weighted by the speed it was actually covered at.
     void updateTravel();
     // Ask the drive for a new frequency and remember it. Travel is settled first, so the
     // stretch already covered is accounted for at the old speed.
     void setSpeed(uint16_t frequencyHz);
+    // Pick the speed for where the gate currently is in its movement. Called every cycle
+    // while moving; setSpeed() ignores a request for the speed already running, so this
+    // costs one modbus write per phase change, not one per cycle.
+    void updateSpeedProfile();
+    // Work out expectedTravelDistanceMs from the current target and position. Has to be
+    // redone whenever either changes - at the start of a movement, and when the control
+    // task shortens a movement that is already running (the pedestrian gap does exactly
+    // that: open completely, then set a target run time).
+    void recomputeExpectedTravelDistance();
 
     // Target run time for a full open / close: long enough to reach the limit switch,
     // but always clearly below the safety backstop.

@@ -124,27 +124,32 @@ void Gate::updateTravel() {
     const uint64_t elapsedUs = currentTimeUs - lastPositionUpdateTimestampUs;
     lastPositionUpdateTimestampUs = currentTimeUs;
 
-    // Distance covered in this slice, expressed as full-speed milliseconds.
-    // At kSpeedFullHz this is simply the elapsed time, which is what the whole firmware
-    // assumed so far; at a lower frequency the gate covers proportionally less ground.
-    // Rounded to whole milliseconds - the gate task steps this every 10 ms, so the
-    // rounding error is far below the accuracy of the travel time it is measured against.
-    const uint32_t distanceMs = (uint32_t)((elapsedUs / 1000) * currentSpeedHz / kSpeedFullHz);
-
     if (state != MOVING_OPENING && state != MOVING_CLOSING)
         return;  // nothing is moving, so nothing was covered
 
-    travelledDistanceMs += distanceMs;
+    // Distance covered in this slice, as full-speed travel time.
+    // At kSpeedFullHz this is simply the elapsed time, which is what the whole firmware
+    // assumed so far; at a lower frequency the gate covers proportionally less ground.
+    //
+    // Known inaccuracy: the drive does not change speed instantly, it ramps over its own
+    // configured accel/decel time, while this counts the new speed from the moment the
+    // command was sent. Each speed change therefore over- or under-states the distance by
+    // roughly half the ramp time times the speed difference - a few hundred ms of travel at
+    // most, and only twice per movement. Well inside what a time-based estimate is worth;
+    // if it turns out to matter, that is an argument for encoders (ROADMAP 3.2), not for a
+    // more elaborate model of the drive.
+    const uint64_t distanceUs = elapsedUs * currentSpeedHz / kSpeedFullHz;
+    travelledDistanceUs += distanceUs;
 
-    const float deltaPercent = (distanceMs / (float)runDurationMs) * 100.0f;
+    const float deltaPercent = (distanceUs / 1000.0f / runDurationMs) * 100.0f;
     if (state == MOVING_OPENING) {
         positionPercent = std::min(100.0f, positionPercent + deltaPercent);
     } else {
         positionPercent = std::max(0.0f, positionPercent - deltaPercent);
     }
-    ESP_LOGD(name, "Travel updated: pos=%.2f%%, distance=%lu ms at %u Hz (+%lu ms)",
-             positionPercent, (unsigned long)travelledDistanceMs, currentSpeedHz,
-             (unsigned long)distanceMs);
+    ESP_LOGD(name, "Travel updated: pos=%.2f%%, distance=%lu ms at %u Hz (+%lu us)",
+             positionPercent, (unsigned long)travelledDistanceMs(), currentSpeedHz,
+             (unsigned long)distanceUs);
 }
 
 
@@ -155,7 +160,7 @@ void Gate::setSpeed(uint16_t frequencyHz) {
     // counted at the speed it was actually driven at.
     updateTravel();
     ESP_LOGI(name, "Changing speed %u Hz -> %u Hz (at %lu ms travelled, pos ~%.0f%%)",
-             currentSpeedHz, frequencyHz, (unsigned long)travelledDistanceMs, positionPercent);
+             currentSpeedHz, frequencyHz, (unsigned long)travelledDistanceMs(), positionPercent);
     // A failed frequency write is deliberately not fatal, for the same reason as in
     // startMovement(): the drive simply keeps the speed it has and the movement stays
     // correct, only less gentle. currentSpeedHz is therefore only updated on success,
@@ -166,6 +171,48 @@ void Gate::setSpeed(uint16_t frequencyHz) {
         ESP_LOGW(name, "Could not change the speed - continuing at %u Hz", currentSpeedHz);
 }
 
+
+
+void Gate::recomputeExpectedTravelDistance() {
+    // Distance from where the gate is now to the end it is heading for.
+    // nextDirection is set by startMovement() for every movement and stays valid for its
+    // whole duration, including while the VFD is still booting.
+    const float fractionLeftPercent = nextDirection ? (100.0f - positionPercent) : positionPercent;
+    const uint32_t distanceToLimitMs = (uint32_t)(fractionLeftPercent / 100.0f * runDurationMs);
+
+    // Whichever comes first: the requested target, or the limit switch. A full movement
+    // deliberately targets MORE than the rail is long (getFullMovementRunTimeMs()) so the
+    // limit switch is the thing that stops it - so for those the limit switch wins here,
+    // which is exactly the end the final approach should be timed against.
+    expectedTravelDistanceMs = std::min((uint32_t)targetRunTimeMs,
+                                        travelledDistanceMs() + distanceToLimitMs);
+
+    ESP_LOGD(name, "Expecting this movement to end after %lu ms of travel (target %llu, %lu to the limit switch)",
+             (unsigned long)expectedTravelDistanceMs, targetRunTimeMs, (unsigned long)distanceToLimitMs);
+}
+
+
+void Gate::updateSpeedProfile() {
+#if VARIABLE_SPEED_ENABLED
+    uint16_t desiredSpeedHz = kSpeedFullHz;
+
+    // 1. gentle start - the first stretch out of standstill
+    if (travelledDistanceMs() < kSlowStartDistanceMs) {
+        desiredSpeedHz = kSpeedSlowHz;
+    }
+    // 2. final approach - the last stretch before the movement is expected to end.
+    //    Written as '<' on the sum rather than a subtraction, so it is also true once the
+    //    gate has travelled PAST where the end was expected: if the limit switch is late or
+    //    missed entirely, the gate keeps creeping rather than accelerating back to full
+    //    speed into the limit stop. That is the safe direction for the estimate to be wrong
+    //    in, and the reason a rough position estimate is good enough here.
+    else if (expectedTravelDistanceMs < travelledDistanceMs() + kSlowApproachDistanceMs) {
+        desiredSpeedHz = kSpeedSlowHz;
+    }
+
+    setSpeed(desiredSpeedHz);
+#endif
+}
 
 
 bool Gate::checkLimitSwitchOpenActive() {
@@ -203,7 +250,7 @@ void Gate::reportFullTravelIfMeasured() {
 
     ESP_LOGW(name, "FULL TRAVEL measured: %lu ms wall clock (%lu ms of travel), "
                    "configured runDurationMs=%lu -> %+.1f%%. Average of %lu runs: %lu ms",
-             (unsigned long)measuredMs, (unsigned long)travelledDistanceMs,
+             (unsigned long)measuredMs, (unsigned long)travelledDistanceMs(),
              (unsigned long)runDurationMs, deviationPercent,
              (unsigned long)measuredFullTravelCount, (unsigned long)measuredFullTravelAverageMs);
 }
@@ -221,8 +268,17 @@ bool Gate::checkCurrentLimitExceeded() {
         ESP_LOGW(name, "Could not read VFD current (error 0x%x) - skipping current limit check", err);
         return false;
     }
-    ESP_LOGD(name, "VFD current: %05.2f A", vfdCurrent);
-    return (vfdCurrent > kCurrentLimitAmpere);
+
+    // The threshold belongs to the speed the motor is running at, not to the gate.
+    const float limitAmpere = (currentSpeedHz == kSpeedFullHz) ? kCurrentLimitAmpere
+                                                              : kCurrentLimitSlowAmpere;
+    #ifdef LOG_VFD_CURRENT_WHEN_CLOSING
+        ESP_LOGI(name, "Closing at %u Hz (%lu ms travelled): current %05.2f A, limit %05.2f A",
+                 currentSpeedHz, (unsigned long)travelledDistanceMs(), vfdCurrent, limitAmpere);
+    #else
+        ESP_LOGD(name, "VFD current: %05.2f A at %u Hz", vfdCurrent, currentSpeedHz);
+    #endif
+    return (vfdCurrent > limitAmpere);
 }
 
 
@@ -258,7 +314,14 @@ void Gate::startMovement(bool opening) {
     //    has, and that is the same value written on every start, so the movement is still
     //    correct. Refusing to move because of it would turn a harmless glitch into a gate
     //    that does not open.
+    // Start at the speed the profile asks for at distance 0, so the gate leaves standstill
+    // gently instead of stepping down a moment after it has already jerked into motion.
+    // Without the profile this is simply the full speed, exactly as before.
+#if VARIABLE_SPEED_ENABLED
+    currentSpeedHz = kSpeedSlowHz;
+#else
     currentSpeedHz = kSpeedFullHz;
+#endif
     if (vfd->setFrequency(currentSpeedHz) != ESP_OK)
         ESP_LOGW(name, "Could not set the VFD frequency - continuing with the one the drive already has");
 
@@ -298,12 +361,15 @@ void Gate::startMovement(bool opening) {
     // The distance covered belongs to THIS movement only, and counts from the moment the
     // motor starts - not from when the command arrived, which may have been a VFD startup
     // delay earlier.
-    travelledDistanceMs = 0;
+    travelledDistanceUs = 0;
 
     // Only a movement that starts ON the far limit switch can measure the whole rail.
     // Note this reads the switch the gate is moving AWAY from - opening starts at closed.
     movementStartedAtOppositeLimit = opening ? checkLimitSwitchClosedActive()
                                              : checkLimitSwitchOpenActive();
+
+    // Where this movement is expected to end - the final approach is timed against it.
+    recomputeExpectedTravelDistance();
 
     if (opening) {
         state = MOVING_OPENING;
@@ -410,6 +476,10 @@ void Gate::updateTargetRunTime(uint32_t ms) {
     ESP_LOGI(name, "Received command: To update target run duration from %llu to %lu",
              targetRunTimeMs, (unsigned long)ms);
     targetRunTimeMs = ms;
+    // The movement now ends somewhere else, so the final approach has to be re-timed.
+    // This is the normal case for a pedestrian gap: the control task opens completely and
+    // shortens the movement immediately afterwards.
+    recomputeExpectedTravelDistance();
 }
 
 
@@ -461,13 +531,13 @@ void Gate::pause() {
     //    'Left' is a DISTANCE, so settle what has been covered and subtract it from the
     //    target - which stays correct no matter what speed the movement was running at.
     //    If the motor never actually started (still waiting for the VFD), the full target
-    //    is still ahead; travelledDistanceMs would still belong to the PREVIOUS movement.
+    //    is still ahead; the travelled distance would still belong to the PREVIOUS movement.
     if (!movementHadAlreadyStarted) {
         remainingRunTimeAtPauseMs = targetRunTimeMs;
     } else {
         updateTravel();
-        remainingRunTimeAtPauseMs = (targetRunTimeMs > travelledDistanceMs)
-                                        ? (targetRunTimeMs - travelledDistanceMs)
+        remainingRunTimeAtPauseMs = (targetRunTimeMs > travelledDistanceMs())
+                                        ? (targetRunTimeMs - travelledDistanceMs())
                                         : 0;
     }
 
@@ -542,6 +612,7 @@ void Gate::handle() {
     case MOVING_OPENING:
     {
         updateTravel();
+        updateSpeedProfile();
         // timeout
         if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
         {
@@ -565,7 +636,7 @@ void Gate::handle() {
         }
         // target reached - compared against the DISTANCE covered, not the time elapsed,
         // so a movement that ran slower than full speed still travels the same distance
-        else if (travelledDistanceMs >= targetRunTimeMs)
+        else if (travelledDistanceMs() >= targetRunTimeMs)
         {
             ESP_LOGI(name, "Target distance reached (while opening).");
             stop(false);
@@ -576,13 +647,10 @@ void Gate::handle() {
     case MOVING_CLOSING:
     {
         updateTravel();
-        #ifdef LOG_VFD_CURRENT_WHEN_CLOSING
-            float vfdCurrent = 0.0f;
-            if (vfd->getCurrent(&vfdCurrent) == ESP_OK)
-                ESP_LOGI(name, "Closing... VFD current: %05.2f A", vfdCurrent);
-            else
-                ESP_LOGW(name, "Closing... could not read VFD current");
-        #endif
+        updateSpeedProfile();
+        // note: the motor current is logged by checkCurrentLimitExceeded() below, which
+        // already reads it. A second read here only doubled the modbus traffic on the one
+        // path that is busiest with it.
 
         // timeout
         if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
@@ -606,7 +674,7 @@ void Gate::handle() {
             break;
         }
         // target reached - see the note in MOVING_OPENING
-        else if (travelledDistanceMs >= targetRunTimeMs)
+        else if (travelledDistanceMs() >= targetRunTimeMs)
         {
             ESP_LOGI(name, "Target distance reached (while closing).");
             stop(false);
