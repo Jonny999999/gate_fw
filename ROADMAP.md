@@ -395,19 +395,42 @@ The profile runs on the gate. Three things only showed up there:
       protect. Until a limit switch confirms the position the gate is capped at the
       reference speed.
 
+#### Calibration hardening (2026-09-01) — done
+Feeding measurements back into the gate's own behaviour is only safe with rules about what
+may become one. Four, each closing a way the first version could learn something wrong:
+
+- [x] **Only clean full runs count.** Started on one limit switch, ended on the other,
+      nothing in between — no barrier pause, stop, cancel, timeout, obstruction or failed
+      VFD start. This subsumes "ignore the first run after a restart": a boot with the gate
+      parked mid-rail cannot produce a measurement at all, and a boot *on* a limit switch
+      legitimately can. The case that made it necessary is subtler — a pause while the gate
+      still sits on the switch produces a run that starts on a switch and reaches the other,
+      but only times the part after the resume.
+- [x] **Only values within ±25 % of the configured constant count**, rejected with the band
+      printed if not. Anchored to the constant rather than to the current estimate on
+      purpose: a sequence of individually plausible steps can then never walk the value away
+      from the hand-measured reality, however many runs go by.
+- [x] **Weighted in at 1/8, not adopted.** Converges in about ten runs; one odd run moves
+      the gate by at most ~12 %.
+- [x] **Kept in NVS**, so a restart does not throw it away. Written only when the estimate
+      has moved more than 2 % from what is stored, or at most every 10th accepted
+      measurement, and never when unchanged. A stored value has to pass the same ±25 % band
+      before it is used — which makes the reset free: correct the constant in `main.cpp` and
+      a stale stored value is discarded on the next boot.
+- [x] Every outcome logs which rule it hit and what the estimate did, so the log answers
+      "why is the gate behaving like that" without a rebuild.
+- [x] **Full speed capped at 70 Hz**, the drives' `-1.7-` ceiling. It had been set to 75, so
+      the drives ran at 70 while the firmware counted distance for 75 — a ~7 % error that the
+      measured travel absorbed into a consistently larger number, which is the worst kind:
+      self-consistent and invisible.
+
 **Open, and worth settling before a long-term test:**
 
-- [ ] **`VFD_FREQUENCY_FULL_HZ` is 75, but `-1.7-` Maximum frequency is documented as 70.**
-      If the drives still hold 70 they are clamping, and the distance bookkeeping is then
-      wrong by ~7 % — invisibly, because the measured travel absorbs it into a consistently
-      larger number. Either raise `-1.7-` on both drives and note it in `doc/vfd/`, or drop
-      the constant to 70.
-- [ ] **The learned travel is RAM only** — every reboot falls back to the constants in
-      `main.cpp`, and the first movement afterwards runs on those. That is deliberate for
-      now (it is one value per gate, and it re-learns on the first full run), but it is the
-      obvious NVS candidate if the numbers turn out stable.
 - [ ] **Both current limits are still the threshold measured at 40 Hz**, and the range is
-      now 25–75 Hz. This is the most likely source of a nuisance fault in daily use.
+      now 25–70 Hz. This is the most likely source of a nuisance fault in daily use.
+- [ ] The NVS keys are `travel_` + the gate name truncated to the 15 characters NVS allows.
+      `Gate1_West` / `Gate2_East` stay distinct; renaming the gates to share a longer prefix
+      would silently make them share one stored value.
 
 #### What the hardware test has to answer
 The open questions are all physical, and none of them are answered by having encoders —
