@@ -306,17 +306,25 @@ void Gate::startMovement(bool opening) {
         startRelay();
         ESP_LOGI(name, "Waiting %d ms for VFD to boot up in state WAITING_FOR_VFD_STARTUP first...", DELAY_VFD_STARTUP);
         state = WAITING_FOR_VFD_STARTUP;
+        // Nothing has been travelled yet, and the leftover from the PREVIOUS movement must
+        // not be readable in the meantime: the control task shortens a movement right after
+        // requesting it (the pedestrian gap), and updateTargetRunTime() computes the
+        // expected end from the distance covered so far.
+        travelledDistanceUs = 0;
+        recomputeExpectedTravelDistance();
         return;
     }
 
-    // 1. Set the speed.
+    // 1. Set the speed the movement starts at.
+    //    With the speed profile that is the slow one, set here rather than left to the
+    //    first updateSpeedProfile(): the gate should leave standstill gently, not jerk into
+    //    motion and step down a cycle later. Without the profile it is the full speed,
+    //    exactly as before.
     //    A failure here is deliberately NOT fatal: the drive keeps the frequency it already
     //    has, and that is the same value written on every start, so the movement is still
     //    correct. Refusing to move because of it would turn a harmless glitch into a gate
-    //    that does not open.
-    // Start at the speed the profile asks for at distance 0, so the gate leaves standstill
-    // gently instead of stepping down a moment after it has already jerked into motion.
-    // Without the profile this is simply the full speed, exactly as before.
+    //    that does not open. currentSpeedHz is therefore left at what was requested - the
+    //    drive is expected to have it, and the next phase change writes it again anyway.
 #if VARIABLE_SPEED_ENABLED
     currentSpeedHz = kSpeedSlowHz;
 #else
