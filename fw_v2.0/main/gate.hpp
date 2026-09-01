@@ -200,6 +200,20 @@ private:
     // so updateTravel() can weight the elapsed time with the speed it was covered at.
     uint16_t currentSpeedHz = kSpeedFullHz;
 
+    //--- measured travel time (diagnostic, ROADMAP 2.6) ---
+    // A movement that starts on one limit switch and ends on the other has covered the
+    // whole rail, so its duration IS the real runDurationMs for this gate - the one value
+    // the time-based position estimate stands or falls with, and currently a constant
+    // measured by hand once. Measuring it on every full run costs nothing and answers the
+    // question the variable-speed experiment depends on: how repeatable is it really?
+    //
+    // Deliberately only logged, never fed back into runDurationMs. Learning the value at
+    // runtime (and storing it in NVS) is a separate decision that should be made with these
+    // numbers in hand, not before - and it is largely pointless if encoders arrive (3.2).
+    bool movementStartedAtOppositeLimit = false;  // set when the motor starts, see startMovement()
+    uint32_t measuredFullTravelCount = 0;         // how many full runs have been measured
+    uint32_t measuredFullTravelAverageMs = 0;     // running mean of those, wall-clock ms
+
     // Variables to track previous state of limit switches (for logging changes)
     bool prevOpenSwitchState = false;
     bool prevClosedSwitchState = false;
@@ -231,6 +245,9 @@ private:
         return std::min(runDurationMs + kFullMovementExtraTimeMs,
                         kMovementTimeoutMs - kMovementTimeoutMarginMs);
     };
+    // Log the real travel time if this movement ran from one limit switch to the other.
+    // Called from handle() the moment the far limit switch is reached.
+    void reportFullTravelIfMeasured();
     bool checkLimitSwitchOpenActive();
     bool checkLimitSwitchClosedActive();
     bool checkCurrentLimitExceeded();

@@ -178,6 +178,37 @@ bool Gate::checkLimitSwitchOpenActive() {
 }
 
 
+void Gate::reportFullTravelIfMeasured() {
+    if (!movementStartedAtOppositeLimit)
+        return;  // started somewhere in the middle - says nothing about the full travel
+    movementStartedAtOppositeLimit = false;  // report once per movement
+
+    const uint32_t measuredMs = (uint32_t)((micros() - timestampStartUs) / 1000);
+
+    // Plausibility: a movement that was paused and resumed while the gate had not yet left
+    // the limit switch also starts "on" it, but timestampStartUs then only covers the
+    // resumed part. Anything far short of the configured travel is not a full run.
+    if (measuredMs < runDurationMs / 2) {
+        ESP_LOGD(name, "Ignoring implausible full travel measurement of %lu ms", (unsigned long)measuredMs);
+        return;
+    }
+
+    // Running mean, computed in place so no history has to be kept.
+    measuredFullTravelCount++;
+    measuredFullTravelAverageMs += ((int32_t)measuredMs - (int32_t)measuredFullTravelAverageMs)
+                                   / (int32_t)measuredFullTravelCount;
+
+    // Deviation from the hand-measured constant the position estimate is built on.
+    const float deviationPercent = ((float)measuredMs - (float)runDurationMs) / runDurationMs * 100.0f;
+
+    ESP_LOGW(name, "FULL TRAVEL measured: %lu ms wall clock (%lu ms of travel), "
+                   "configured runDurationMs=%lu -> %+.1f%%. Average of %lu runs: %lu ms",
+             (unsigned long)measuredMs, (unsigned long)travelledDistanceMs,
+             (unsigned long)runDurationMs, deviationPercent,
+             (unsigned long)measuredFullTravelCount, (unsigned long)measuredFullTravelAverageMs);
+}
+
+
 bool Gate::checkCurrentLimitExceeded() {
     // note: on a failed modbus read getCurrent() leaves the output untouched.
     // It used to be read uninitialised here and the error was ignored, so random stack
@@ -268,6 +299,11 @@ void Gate::startMovement(bool opening) {
     // motor starts - not from when the command arrived, which may have been a VFD startup
     // delay earlier.
     travelledDistanceMs = 0;
+
+    // Only a movement that starts ON the far limit switch can measure the whole rail.
+    // Note this reads the switch the gate is moving AWAY from - opening starts at closed.
+    movementStartedAtOppositeLimit = opening ? checkLimitSwitchClosedActive()
+                                             : checkLimitSwitchOpenActive();
 
     if (opening) {
         state = MOVING_OPENING;
@@ -520,6 +556,8 @@ void Gate::handle() {
         else if (checkLimitSwitchOpenActive())
         {
             ESP_LOGI(name, "Open limit switch triggered.");
+            // measure before stop(), which spends ~100 ms on modbus
+            reportFullTravelIfMeasured();
             positionPercent = 100.0f; // Calibrate position.
             stop(false);
             state = IDLE_FULLY_OPEN;
@@ -560,6 +598,8 @@ void Gate::handle() {
         else if (checkLimitSwitchClosedActive())
         {
             ESP_LOGI(name, "Close limit switch triggered.");
+            // measure before stop(), which spends ~100 ms on modbus
+            reportFullTravelIfMeasured();
             positionPercent = 0.0f; // Calibrate position.
             stop(false);
             state = IDLE_FULLY_CLOSED;
