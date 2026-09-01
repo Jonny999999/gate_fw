@@ -64,20 +64,21 @@
 #define VFD_FREQUENCY_REFERENCE_HZ 40
 
 // Speed the gate actually runs at in the middle of a movement.
-// 60 Hz to make the difference to the slow phases obvious during the experiment; 40 Hz is
-// the value with years of service behind it.
+// 70 Hz is the drive's configured ceiling and therefore the most this may be; 40 Hz is the
+// value with years of service behind it, if the gate ever turns out to be too quick.
 //
-// Safe on these drives, but only because of how they are parameterised - check both before
-// raising it further (doc/vfd/T13-400W-12-H_parameters_edit.pdf):
-//   -1.7- Maximum frequency is set to 70 Hz (factory 50). Anything above that is silently
-//         clamped by the drive, which would also make the distance bookkeeping wrong - it
-//         assumes the drive runs at what it was asked for.
+// This is a hard limit, not a preference (doc/vfd/T13-400W-12-H_parameters_edit.pdf):
+//   -1.7- Maximum frequency is set to 70 Hz (factory 50). Above that the drive simply runs
+//         at 70 while the firmware believes it is running faster, so the distance
+//         bookkeeping drifts - and invisibly, because the measured travel absorbs the error
+//         into a consistently larger number. Raise the drive parameter first if this should
+//         ever go higher, and note the new value in doc/vfd/.
 //   -2.0- Corresponding frequency of the highest output voltage is 99.9 Hz (west) / 95 Hz
 //         (east) - deliberately set high to run the motors on reduced voltage. The V/f
-//         ratio is therefore still constant at 60 Hz, so this is NOT field weakening and
+//         ratio is therefore still constant at 70 Hz, so this is NOT field weakening and
 //         there is no torque loss; a drive left at the factory 50 Hz would lose torque
 //         above 50 Hz instead.
-#define VFD_FREQUENCY_FULL_HZ 75
+#define VFD_FREQUENCY_FULL_HZ 70
 
 // Speed for the gentle start and the final approach.
 // Note the drive's low-speed torque boost (-0.3- / -0.4-) only reaches up to 20 Hz, so
