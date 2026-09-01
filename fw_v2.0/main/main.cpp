@@ -129,28 +129,34 @@ extern "C" void app_main(void)
     //             (gpio, active level), VFD supply relay gpio, VFD,
     //             full run duration 0% -> 100% in ms
     //
-    // Measured full run durations (VFD start setting 7):
-    //   west gate: ~9 s, east gate: ~10 s   (1 s margin added below)
-    // note: this used to say "at 50 Hz", but the firmware has only ever sent 40 Hz to the
-    //       drives (the constant that said 50 was never read). Which of the two the
-    //       stopwatch actually saw is not recorded, so the numbers are worth re-measuring:
-    //       every full movement now logs its own real travel time, see the "FULL TRAVEL
-    //       measured" lines.
-    //       These are DISTANCES at VFD_FREQUENCY_REFERENCE_HZ (config_behaviour.h), not
-    //       wall-clock times - changing the speed the gate runs at does not change them.
+    // Full travel of each gate, as a DISTANCE in milliseconds at VFD_FREQUENCY_REFERENCE_HZ
+    // (config_behaviour.h) - not a wall-clock time. Changing the speed the gate runs at does
+    // not change these.
+    //
+    // These are only the STARTING values. Every full limit-switch-to-limit-switch movement
+    // measures the real distance and the gate uses that from then on
+    // (Gate::effectiveFullTravelMs), so they only have to be close enough for the first
+    // movement after a restart.
+    //
+    // Measured 2026-09-01 with the speed profile active:
+    //   west 8826 ms, east 9123 ms of travel
+    // The previous hand-measured guesses were 10000 and 11000, i.e. 13% and 21% too long.
+    // That mattered: the final approach is timed against the expected end, so it started
+    // almost at the limit switch instead of 2 s before it, and the gate hit the stop at
+    // full speed.
     static Gate gate1West("Gate1_West",
                CONFIG_SW_G1_OPEN_GPIO, 0,   // active low (switch NO to GND -> optocoupler ON)
                CONFIG_SW_G1_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
                CONFIG_RELAY_VFD1_GPIO,
                &vfd1,
-               9000 + 1000);
+               8800);
 
     static Gate gate2East("Gate2_East",
                CONFIG_SW_G2_OPEN_GPIO, 0,   // active low (switch NO to GND -> optocoupler ON)
                CONFIG_SW_G2_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
                CONFIG_RELAY_VFD2_GPIO,
                &vfd2,
-               10000 + 1000);
+               9100);
 
     //=== 6. tasks ===
     // The gate task owns the Gate objects and therefore the RS485 bus; the control task

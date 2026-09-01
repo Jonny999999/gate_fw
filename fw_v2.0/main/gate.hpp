@@ -212,6 +212,24 @@ private:
     bool movementStartedAtOppositeLimit = false;  // set when the motor starts, see startMovement()
     uint32_t measuredFullTravelCount = 0;         // how many full runs have been measured
     uint32_t measuredFullTravelAverageMs = 0;     // running mean of those, wall-clock ms
+    // Running mean of the same runs measured as DISTANCE (travel-ms at kSpeedReferenceHz).
+    // This is the one the speed profile needs: wall-clock time depends on which speeds the
+    // movement happened to use, distance does not.
+    uint32_t measuredFullTravelDistanceMs = 0;
+
+public:
+    // How far this gate really travels, limit switch to limit switch, in travel-ms.
+    // The measured average as soon as there is one, the configured constant until then.
+    //
+    // Everything that needs to know where the gate is goes through here rather than reading
+    // runDurationMs directly. That constant is hand-measured and was 13-21% too large, which
+    // put the whole 'last N ms' window past the point where the gate actually stops - so the
+    // final approach barely happened. Measuring it makes that self-correcting.
+    uint32_t effectiveFullTravelMs() const {
+        return (measuredFullTravelCount > 0) ? measuredFullTravelDistanceMs : runDurationMs;
+    };
+
+private:
 
     // Variables to track previous state of limit switches (for logging changes)
     bool prevOpenSwitchState = false;

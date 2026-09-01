@@ -141,7 +141,7 @@ void Gate::updateTravel() {
     const uint64_t distanceUs = elapsedUs * currentSpeedHz / kSpeedReferenceHz;
     travelledDistanceUs += distanceUs;
 
-    const float deltaPercent = (distanceUs / 1000.0f / runDurationMs) * 100.0f;
+    const float deltaPercent = (distanceUs / 1000.0f / effectiveFullTravelMs()) * 100.0f;
     if (state == MOVING_OPENING) {
         positionPercent = std::min(100.0f, positionPercent + deltaPercent);
     } else {
@@ -178,7 +178,7 @@ void Gate::recomputeExpectedTravelDistance() {
     // nextDirection is set by startMovement() for every movement and stays valid for its
     // whole duration, including while the VFD is still booting.
     const float fractionLeftPercent = nextDirection ? (100.0f - positionPercent) : positionPercent;
-    const uint32_t distanceToLimitMs = (uint32_t)(fractionLeftPercent / 100.0f * runDurationMs);
+    const uint32_t distanceToLimitMs = (uint32_t)(fractionLeftPercent / 100.0f * effectiveFullTravelMs());
 
     // Whichever comes first: the requested target, or the limit switch. A full movement
     // deliberately targets MORE than the rail is long (getFullMovementRunTimeMs()) so the
@@ -231,28 +231,35 @@ void Gate::reportFullTravelIfMeasured() {
     movementStartedAtOppositeLimit = false;  // report once per movement
 
     const uint32_t measuredMs = (uint32_t)((micros() - timestampStartUs) / 1000);
+    const uint32_t measuredDistanceMs = travelledDistanceMs();
 
     // Plausibility: a movement that was paused and resumed while the gate had not yet left
     // the limit switch also starts "on" it, but timestampStartUs then only covers the
-    // resumed part. Anything far short of the configured travel is not a full run.
-    if (measuredMs < runDurationMs / 2) {
-        ESP_LOGD(name, "Ignoring implausible full travel measurement of %lu ms", (unsigned long)measuredMs);
+    // resumed part. Anything far short of the expected travel is not a full run.
+    // Checked on the distance, so the verdict does not depend on which speeds were used.
+    if (measuredDistanceMs < effectiveFullTravelMs() / 2) {
+        ESP_LOGD(name, "Ignoring implausible full travel measurement of %lu ms of travel",
+                 (unsigned long)measuredDistanceMs);
         return;
     }
 
-    // Running mean, computed in place so no history has to be kept.
+    // Deviation from whatever the gate was working with before this run.
+    const uint32_t previousFullTravelMs = effectiveFullTravelMs();
+    const float deviationPercent =
+        ((float)measuredDistanceMs - (float)previousFullTravelMs) / previousFullTravelMs * 100.0f;
+
+    // Running means, computed in place so no history has to be kept.
     measuredFullTravelCount++;
     measuredFullTravelAverageMs += ((int32_t)measuredMs - (int32_t)measuredFullTravelAverageMs)
                                    / (int32_t)measuredFullTravelCount;
+    measuredFullTravelDistanceMs += ((int32_t)measuredDistanceMs - (int32_t)measuredFullTravelDistanceMs)
+                                    / (int32_t)measuredFullTravelCount;
 
-    // Deviation from the hand-measured constant the position estimate is built on.
-    const float deviationPercent = ((float)measuredMs - (float)runDurationMs) / runDurationMs * 100.0f;
-
-    ESP_LOGW(name, "FULL TRAVEL measured: %lu ms wall clock (%lu ms of travel), "
-                   "configured runDurationMs=%lu -> %+.1f%%. Average of %lu runs: %lu ms",
-             (unsigned long)measuredMs, (unsigned long)travelledDistanceMs(),
-             (unsigned long)runDurationMs, deviationPercent,
-             (unsigned long)measuredFullTravelCount, (unsigned long)measuredFullTravelAverageMs);
+    ESP_LOGW(name, "FULL TRAVEL measured: %lu ms of travel (%lu ms wall clock), "
+                   "was working with %lu -> %+.1f%%. Now using %lu ms (average of %lu runs)",
+             (unsigned long)measuredDistanceMs, (unsigned long)measuredMs,
+             (unsigned long)previousFullTravelMs, deviationPercent,
+             (unsigned long)effectiveFullTravelMs(), (unsigned long)measuredFullTravelCount);
 }
 
 

@@ -77,7 +77,7 @@
 //         ratio is therefore still constant at 60 Hz, so this is NOT field weakening and
 //         there is no torque loss; a drive left at the factory 50 Hz would lose torque
 //         above 50 Hz instead.
-#define VFD_FREQUENCY_FULL_HZ 60
+#define VFD_FREQUENCY_FULL_HZ 75
 
 // Speed for the gentle start and the final approach.
 // Note the drive's low-speed torque boost (-0.3- / -0.4-) only reaches up to 20 Hz, so
