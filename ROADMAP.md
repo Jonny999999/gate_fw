@@ -108,8 +108,12 @@ No functional changes intended beyond fixing the defects listed under 1.1.
       the status LED, addressed by free functions so nothing has to carry a pointer.
 - [x] **Replaced `components/gpio`** into a proper reusable debounce component with unit-testable
       logic (see 1.3), or replace it outright.
-- [ ] **`config.h` split:** GPIO/pin mapping vs. behaviour tuning (timings, thresholds).
-      Timing constants currently live scattered across `control.cpp` and `gate.hpp`.
+- [~] **`config.h` split:** GPIO/pin mapping vs. behaviour tuning (timings, thresholds).
+      Half done on `feature/variable-gate-speed`: everything that used to sit at the top of
+      `gate.hpp` (speeds, VFD startup delay, relay timeout, current limits, debug switches)
+      now lives in `main/config_behaviour.h`, and `config.h` stays the pin map it says it
+      is. Still open: the control-task timings at the top of `control.cpp` — button windows,
+      light barrier, automatic closing.
 - [~] **Remove dead code:** `RUN_GATE_TEST` / `RUN_MODBUS_TEST` and `gateHandleTask()`
       removed (the gate test referenced an object that no longer existed and could not have
       compiled). `RUN_GPIO_TEST` kept — still useful for checking cabinet wiring.
@@ -337,8 +341,20 @@ and is the only one that had to move.
 - [x] **Two discrete speed levels** rather than a continuous curve — one `setFrequency()`
       per phase change, `kSlowStartDistanceMs` / `kSlowApproachDistanceMs`, behind
       `VARIABLE_SPEED_ENABLED`.
-- [x] **`kMovementTimeoutMs` raised 15 s → 18 s** while the profile is on, so the margin
-      over a full run stays what it was. Restored to 15 s when it is switched off.
+- [x] **The distance unit is pinned to a reference speed** (`VFD_FREQUENCY_REFERENCE_HZ`,
+      40 Hz — what actually ran from V2.0 to V2.2), not to whatever the full speed happens
+      to be. Without that, raising the speed re-invalidates the rail length, the pedestrian
+      gap and the profile distances every time — the trap this section warned about.
+      Changing `VFD_FREQUENCY_FULL_HZ` now only changes how fast those distances are
+      covered.
+- [x] **Full speed raised 40 → 60 Hz** so the contrast with the slow phases is obvious.
+      Safe only because of how the drives are parameterised, which is now recorded next to
+      the constant: `-1.7-` max frequency is 70 Hz (above that the drive clamps silently,
+      which would also break the distance bookkeeping), and `-2.0-` is 99.9 / 95 Hz, so
+      60 Hz is still constant V/f — no field weakening, no torque loss.
+- [x] **`kMovementTimeoutMs` stays at its historical 15 s.** A full run at 60/25 Hz takes
+      ~9.4 s against the ~11 s it used to, so it fits with more margin than before. The
+      arithmetic for the speeds worth trying is written out next to the constant.
 - [x] **Measure the real travel time on every limit-to-limit run** and log it with the
       deviation from `runDurationMs` and a running mean. Only logged, never fed back —
       learning it into NVS is a separate decision, best made with these numbers in hand,
@@ -359,22 +375,30 @@ they are the reason to test now rather than later:
       been called from standstill. If the drive jolts, refuses, or trips on the change, the
       whole idea ends here for a few euros of test time.
 - [ ] **Is 25 Hz enough to move the gate at all** — from standstill, and against wind or a
-      stiff spot on the rail? Raise `SLOW_VFD_FREQUENCY` if it stalls; that is the first
-      constant to try.
-- [ ] **What does the motor draw at 25 Hz while closing?** Read it off the
-      `LOG_VFD_CURRENT_WHEN_CLOSING` lines and set `kCurrentLimitSlowAmpere` from real
-      numbers. Until then obstruction detection during the final approach is running on a
-      threshold measured at a different speed.
+      stiff spot on the rail? The drive's low-speed torque boost (`-0.3-` / `-0.4-`) only
+      reaches up to 20 Hz, so 25 Hz gets plain reduced voltage. Raise
+      `VFD_FREQUENCY_SLOW_HZ` if it stalls, or extend the boost range on the drive.
+- [ ] **Does 60 Hz feel right, or too fast for a gate?** It is 1.5× the speed the gate has
+      run at for years, and the light barrier only covers the gateway. Lower
+      `VFD_FREQUENCY_FULL_HZ` without touching anything else if it does.
+- [ ] **What does the motor draw at 25 and 60 Hz while closing?** The obstruction
+      threshold was tuned at 40 Hz, so both ends of the new range are unverified. Read them off the
+      `LOG_VFD_CURRENT_WHEN_CLOSING` lines and set `VFD_CURRENT_LIMIT_*` from real numbers.
 - [ ] **How repeatable is the travel time really?** The `FULL TRAVEL measured:` lines give
       the spread over a session. If it is a few percent, the time-based approach is fine
       and encoders buy exactness rather than function. If it wanders, that is the argument
       for 3.2.
 - [ ] **Does the gentler pedestrian gap feel better or just slow?** It is short enough to
-      run at 25 Hz throughout, so it now takes ~3 s instead of ~1.9 s for the same width.
+      run at 25 Hz throughout — so it is the same width as before but takes ~3 s, and gets
+      no benefit from the higher full speed. Lower the two profile distances if it should.
 - [ ] **Is the drive's own accel/decel ramp visible?** The distance integration counts the
       new speed from the moment the command is sent, while the drive ramps to it over its
-      configured time. Worth a few hundred ms of travel per speed change — check whether
-      full movements now consistently over- or undershoot.
+      configured time (`-0.1-` start 7, `-0.2-` stop 10). Worth a few hundred ms of travel
+      per speed change — check whether full movements now consistently over- or undershoot.
+      Register 2 is documented as "speed setting **and speed feedback**", so a read may show
+      the real output frequency and settle this directly. Not polled today: while opening
+      there is no modbus traffic at all, and adding a read per cycle would slow the response
+      to a stop button.
 - [x] Nice side effect, and now explicit in the code: a slow final approach makes a missed
       limit switch far less violent, which is the failure mode `kMovementTimeoutMs`
       currently backstops.
