@@ -187,14 +187,34 @@ void Gate::startMovement(bool opening) {
         return;
     }
 
-    vfd->setFrequency(kDefaultVfdFrequency);
-    esp_err_t err = vfd->start(opening); // start motor in desired direction
+    // 1. Set the speed.
+    //    A failure here is deliberately NOT fatal: the drive keeps the frequency it already
+    //    has, and that is the same value written on every start, so the movement is still
+    //    correct. Refusing to move because of it would turn a harmless glitch into a gate
+    //    that does not open.
+    if (vfd->setFrequency(kDefaultVfdFrequency) != ESP_OK)
+        ESP_LOGW(name, "Could not set the VFD frequency - continuing with the one the drive already has");
+
+    // 2. Start the motor, repeating the command if the drive does not confirm it.
+    esp_err_t err = ESP_FAIL;
+    for (int attempt = 1; attempt <= kStartAttempts; attempt++) {
+        err = vfd->start(opening);
+        if (err == ESP_OK)
+            break;
+        ESP_LOGW(name, "VFD start attempt %d of %d failed (error 0x%x)", attempt, kStartAttempts, err);
+    }
+
     #ifndef IGNORE_VFD_ERROR
     if (err != ESP_OK) {
-        ESP_LOGE(name, "VFD starting failed! switching to ERROR_STATE");
+        // After this many attempts we no longer know what the drive is doing: it may well
+        // have received a start command whose reply was lost, in which case the motor is
+        // turning and nothing here is tracking it any more - no target run time, no limit
+        // switch check. Cutting the supply is the only action that is correct either way.
+        ESP_LOGE(name, "VFD did not start after %d attempts -> cutting the VFD supply", kStartAttempts);
         indicatorBeep(BuzzerSignal::FAULT);
         indicatorSetFault(FaultCode::VFD_COMMUNICATION);
-        // switch to ERROR state to prevent infinite loop of retries
+        forceStopRelay();
+        // switch to ERROR state to prevent an infinite loop of retries
         state = ERROR_STATE;
         errorLatched = true;
         return;

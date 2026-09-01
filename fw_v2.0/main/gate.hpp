@@ -121,6 +121,12 @@ private:
     // so the limit switch is definitely reached.
     static constexpr uint32_t kFullMovementExtraTimeMs = 5000;
 
+    // How often the start command is sent before giving up on the drive.
+    // The command is idempotent ("run in this direction"), so a lost or garbled reply can
+    // simply be repeated - which is far more likely than the drive actually refusing to
+    // start. Each attempt is itself retried once inside send_modbus_command().
+    static constexpr int kStartAttempts = 3;
+
 
     const char* name;             // Gate name (used as the log tag)
     const gpio_num_t kLimitSwitchOpenGpio;   // GPIO for the open limit switch
