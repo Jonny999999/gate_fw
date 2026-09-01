@@ -1,5 +1,6 @@
 #include "control.hpp"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "gate_task.hpp"
 #include "indicator.hpp"
 #include "input.hpp"
@@ -213,6 +214,12 @@ void controlTask(void *param)
     inputStart(inputPins);
 
     ESP_LOGI(TAG_CTL, "Control task started");
+
+    // Watched by the task watchdog: this loop never blocks on anything slower than a queue
+    // with a short timeout, so failing to check in means it is genuinely stuck.
+    // (The gate task is deliberately NOT watched - it blocks on modbus for up to seconds at
+    //  a time by design, which is not a fault.)
+    esp_task_wdt_add(NULL);
 
     // control loop
     while (true)
@@ -609,6 +616,7 @@ void controlTask(void *param)
 
         // note: the gates are stepped by their own task (gate_task.cpp), so this loop
         // now really runs at CONTROL_LOOP_HANDLE_DELAY_MS and never blocks on modbus
+        esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(CONTROL_LOOP_HANDLE_DELAY_MS)); // Small delay to avoid busy loop
     } // end control loop
 }

@@ -9,6 +9,7 @@ extern "C" {
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 }
 
 //===============================
@@ -226,6 +227,9 @@ static void indicatorTask(void *param)
 
     ESP_LOGW(TAG_INDICATOR, "indicator task started (tick %d ms)", INDICATOR_TICK_MS);
 
+    // watched by the task watchdog - this loop only sets GPIOs and reads a queue
+    esp_task_wdt_add(NULL);
+
     TickType_t lastWakeTime = xTaskGetTickCount();
     while (true)
     {
@@ -303,6 +307,7 @@ static void indicatorTask(void *param)
         gpio_set_level(pinConfig.buzzerGpio, buzzerChannel.getOutputIsOn() ? 1 : 0);
         gpio_set_level(pinConfig.faultLedGpio, faultLedChannel.getOutputIsOn() ? 1 : 0);
 
+        esp_task_wdt_reset();
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(INDICATOR_TICK_MS));
     }
 }

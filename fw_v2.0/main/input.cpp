@@ -10,6 +10,7 @@ extern "C" {
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 }
 
 //===============================
@@ -155,6 +156,9 @@ static void inputTask(void *param)
 
     ESP_LOGW(TAG_INPUT, "input sampling task started (interval %d ms)", INPUT_SAMPLE_INTERVAL_MS);
 
+    // watched by the task watchdog - this loop only reads GPIOs and posts to a queue
+    esp_task_wdt_add(NULL);
+
     TickType_t lastWakeTime = xTaskGetTickCount();
     while (true)
     {
@@ -192,6 +196,7 @@ static void inputTask(void *param)
         handleLightBarrier(nowMs);
 
         // 4. wait for the next sampling slot (absolute, so the interval does not drift)
+        esp_task_wdt_reset();
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(INPUT_SAMPLE_INTERVAL_MS));
     }
 }

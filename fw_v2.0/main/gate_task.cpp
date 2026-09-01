@@ -25,6 +25,8 @@ extern "C" {
 #define GATE_TASK_STACK_SIZE (4096 * 2)
 
 #define GATE_COMMAND_QUEUE_LENGTH 10
+// how long a sender waits for space before a command is finally dropped
+#define GATE_COMMAND_QUEUE_WAIT_MS 200
 
 
 //===============================
@@ -269,10 +271,15 @@ void gateSendCommand(GateCommandType type, uint32_t param)
     // count it before queueing, so gatesAreIdle() can never see a gap between the control
     // task sending a command and the gate task picking it up
     pendingCommandCount++;
-    if (xQueueSend(gateCommandQueue, &command, 0) != pdTRUE)
+    // Wait briefly rather than dropping. A dropped STOP would be the worst possible thing to
+    // lose, and the queue only ever fills if the gate task is stuck in a long modbus retry -
+    // in which case waiting a moment is exactly right. The caller is the control task, which
+    // has nothing more urgent to do.
+    if (xQueueSend(gateCommandQueue, &command, pdMS_TO_TICKS(GATE_COMMAND_QUEUE_WAIT_MS)) != pdTRUE)
     {
         pendingCommandCount--;
-        ESP_LOGE(TAG_GATE_TASK, "gate command queue full - dropped %s!", gateCommandToString(type));
+        ESP_LOGE(TAG_GATE_TASK, "gate command queue still full after %d ms - dropped %s!",
+                 GATE_COMMAND_QUEUE_WAIT_MS, gateCommandToString(type));
     }
 }
 
