@@ -10,6 +10,7 @@ extern "C" {
 #include "modbus.h"
 #include "iotest.h"
 #include "config.h"
+#include "nvs_flash.h"
 }
 
 #include "vfd.hpp"
@@ -85,6 +86,20 @@ extern "C" void app_main(void)
     configure_gpio_pins();
     // Configure UART for the RS485 / modbus bus
     modbus_init();
+    // NVS, where each gate keeps the travel it has learned about itself.
+    // Must be up before the Gate objects are constructed, since they read it there.
+    // A partition that is full or was written by an older format is erased rather than
+    // given up on: the only thing stored is a value the gates re-learn within a few
+    // movements, so losing it costs nothing and refusing to boot would cost a lot.
+    esp_err_t nvsStatus = nvs_flash_init();
+    if (nvsStatus == ESP_ERR_NVS_NO_FREE_PAGES || nvsStatus == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(TAG, "NVS needs to be erased (%s) - doing that now", esp_err_to_name(nvsStatus));
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvsStatus = nvs_flash_init();
+    }
+    if (nvsStatus != ESP_OK)
+        ESP_LOGE(TAG, "NVS unavailable (%s) - the gates will start from their configured "
+                      "travel constants on every boot", esp_err_to_name(nvsStatus));
 
     //=== 2. logging ===
     esp_log_level_set("Modbus-RTU", ESP_LOG_WARN);
@@ -133,10 +148,13 @@ extern "C" void app_main(void)
     // (config_behaviour.h) - not a wall-clock time. Changing the speed the gate runs at does
     // not change these.
     //
-    // These are only the STARTING values. Every full limit-switch-to-limit-switch movement
-    // measures the real distance and the gate uses that from then on
-    // (Gate::effectiveFullTravelMs), so they only have to be close enough for the first
-    // movement after a restart.
+    // These are the STARTING values and the anchor for the plausibility band. Every clean
+    // limit-switch-to-limit-switch movement measures the real distance, the gate weights it
+    // into its estimate (Gate::effectiveFullTravelMs) and keeps that across restarts in NVS.
+    //
+    // A measurement, and a stored value, is only believed within +/-25% of the number here -
+    // so this is also the reset: correct it and any stale stored value is discarded on the
+    // next boot.
     //
     // Measured 2026-09-01 with the speed profile active:
     //   west 8826 ms, east 9123 ms of travel

@@ -1,6 +1,13 @@
 #include "gate.hpp"
 #include "timing.hpp"
 
+extern "C" {
+#include "nvs.h"
+}
+
+// NVS namespace holding the per-gate learned travel. One namespace, one key per gate.
+#define NVS_NAMESPACE_GATE "gate"
+
 
 
 // Gate state strings for logging
@@ -81,6 +88,9 @@ Gate::Gate(const char *name,
         state = IDLE_PARTIALLY_OPEN;
         positionPercent = 50.0f;
     }
+
+    // Pick up what this gate learned about itself before the last restart.
+    loadFullTravelFromNvs();
 
     ESP_LOGW(name, "GPIO pins and variables initialized - starting in state %s (pos ~%.0f%%, %s)",
              GateState_str[(int)state], positionPercent,
@@ -248,6 +258,112 @@ bool Gate::checkLimitSwitchOpenActive() {
 }
 
 
+void Gate::buildNvsKey(char *out, size_t outSize) const {
+    // "travel_" + the gate name, truncated to what NVS accepts (15 characters).
+    // Gate1_West / Gate2_East differ in the 5th character, so the truncated keys stay
+    // distinct - check that again if the gates are ever renamed.
+    snprintf(out, outSize, "travel_%s", name);
+}
+
+
+void Gate::loadFullTravelFromNvs() {
+    char key[NVS_KEY_NAME_MAX_SIZE];
+    buildNvsKey(key, sizeof(key));
+
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE_GATE, NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        // Perfectly normal on a fresh device: the namespace does not exist until the first
+        // write. Not worth a warning.
+        ESP_LOGI(name, "CALIBRATION: nothing stored yet (nvs_open: %s) - starting from the "
+                       "configured %lu ms", esp_err_to_name(err), (unsigned long)runDurationMs);
+        return;
+    }
+
+    uint32_t stored = 0;
+    err = nvs_get_u32(handle, key, &stored);
+    nvs_close(handle);
+
+    if (err != ESP_OK) {
+        ESP_LOGI(name, "CALIBRATION: no stored travel under '%s' (%s) - starting from the "
+                       "configured %lu ms", key, esp_err_to_name(err), (unsigned long)runDurationMs);
+        return;
+    }
+
+    // The same band a fresh measurement has to pass. Flash must not be able to hand the
+    // gate a value the runtime would have rejected - and this is what makes correcting the
+    // constant in main.cpp discard a stale stored value on its own.
+    if (stored < minPlausibleFullTravelMs() || stored > maxPlausibleFullTravelMs()) {
+        ESP_LOGW(name, "CALIBRATION: DISCARDING stored travel of %lu ms - outside the "
+                       "plausible band %lu..%lu ms for the configured %lu ms. Starting from "
+                       "the configured value",
+                 (unsigned long)stored, (unsigned long)minPlausibleFullTravelMs(),
+                 (unsigned long)maxPlausibleFullTravelMs(), (unsigned long)runDurationMs);
+        return;
+    }
+
+    fullTravelMs = stored;
+    storedFullTravelMs = stored;
+    ESP_LOGW(name, "CALIBRATION: restored travel of %lu ms from NVS (%+.1f%% off the "
+                   "configured %lu ms)",
+             (unsigned long)stored,
+             ((float)stored - (float)runDurationMs) / runDurationMs * 100.0f,
+             (unsigned long)runDurationMs);
+}
+
+
+void Gate::storeFullTravelToNvsIfWorthwhile() {
+    measurementsSinceStore++;
+
+    if (fullTravelMs == storedFullTravelMs)
+        return;  // nothing to say
+
+    // Two reasons to write, and neither is "a measurement happened": the estimate moves a
+    // few milliseconds on most runs, and that is not worth a flash cycle.
+    const uint32_t changeMs = (fullTravelMs > storedFullTravelMs)
+                                  ? (fullTravelMs - storedFullTravelMs)
+                                  : (storedFullTravelMs - fullTravelMs);
+    const bool changedSignificantly = (changeMs > fullTravelMs * kStoreSignificantChangeFraction);
+    const bool dueAnyway = (measurementsSinceStore >= kStoreEveryNMeasurements);
+    if (!changedSignificantly && !dueAnyway) {
+        ESP_LOGI(name, "CALIBRATION: not storing yet - %lu ms from the stored %lu ms "
+                       "(under %.0f%%), %lu of %lu runs since the last write",
+                 (unsigned long)changeMs, (unsigned long)storedFullTravelMs,
+                 kStoreSignificantChangeFraction * 100.0f,
+                 (unsigned long)measurementsSinceStore, (unsigned long)kStoreEveryNMeasurements);
+        return;
+    }
+
+    char key[NVS_KEY_NAME_MAX_SIZE];
+    buildNvsKey(key, sizeof(key));
+
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE_GATE, NVS_READWRITE, &handle);
+    if (err == ESP_OK) {
+        err = nvs_set_u32(handle, key, fullTravelMs);
+        if (err == ESP_OK)
+            err = nvs_commit(handle);
+        nvs_close(handle);
+    }
+
+    if (err != ESP_OK) {
+        // Not fatal: the gate keeps using the value it learned, it just will not survive a
+        // restart. Worth a warning because a flash that stopped accepting writes is
+        // something to know about.
+        ESP_LOGE(name, "CALIBRATION: could not store %lu ms to NVS (%s)",
+                 (unsigned long)fullTravelMs, esp_err_to_name(err));
+        return;
+    }
+
+    ESP_LOGW(name, "CALIBRATION: stored %lu ms to NVS (was %lu, %s; %lu runs since the last write)",
+             (unsigned long)fullTravelMs, (unsigned long)storedFullTravelMs,
+             changedSignificantly ? "changed significantly" : "periodic write",
+             (unsigned long)measurementsSinceStore);
+    storedFullTravelMs = fullTravelMs;
+    measurementsSinceStore = 0;
+}
+
+
 void Gate::invalidateMeasurement(const char *reason) {
     if (!measurementIsValid)
         return;
@@ -308,6 +424,8 @@ void Gate::reportFullTravelIfMeasured() {
              (unsigned long)previousFullTravelMs, (unsigned long)fullTravelMs,
              (long)kFullTravelAverageDivisor, (unsigned long)measuredFullTravelCount,
              (unsigned long)measuredFullTravelAverageMs);
+
+    storeFullTravelToNvsIfWorthwhile();
 }
 
 

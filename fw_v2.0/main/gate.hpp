@@ -262,6 +262,30 @@ private:
     // enough for real seasonal and wear-related change, narrow enough that a mismeasured run
     // is rejected rather than learned.
     static constexpr float kFullTravelToleranceFraction = 0.25f;
+    //--- persistence ---
+    // The learned value is kept in NVS so a restart does not throw away what the gate knows
+    // about itself. Without it every reboot starts from the configured constant again, and
+    // the first movement afterwards runs on a value that was 13-21% off when it was last
+    // hand-measured.
+    //
+    // A stored value is only loaded if it is inside the same tolerance band a measurement
+    // has to pass, so flash can never hand the gate something the runtime would reject -
+    // and correcting the constant in main.cpp invalidates a stale stored value by itself.
+    //
+    // Written rarely on purpose. NVS wear is the reason, but so is not writing noise: the
+    // estimate moves a few milliseconds on most runs and that is not worth a flash cycle.
+    static constexpr float kStoreSignificantChangeFraction = 0.02f; // 2% is worth a write
+    static constexpr uint32_t kStoreEveryNMeasurements = 10;        // otherwise, at most this often
+    uint32_t storedFullTravelMs = 0;        // what NVS holds (0 = nothing stored yet)
+    uint32_t measurementsSinceStore = 0;
+
+    void loadFullTravelFromNvs();
+    void storeFullTravelToNvsIfWorthwhile();
+    // NVS key for this gate, derived from its name. NVS keys are limited to 15 characters,
+    // so a long gate name is truncated - keep the first characters of the two names
+    // distinct.
+    void buildNvsKey(char *out, size_t outSize) const;
+
     uint32_t minPlausibleFullTravelMs() const {
         return (uint32_t)(runDurationMs * (1.0f - kFullTravelToleranceFraction));
     };
