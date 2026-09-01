@@ -59,6 +59,9 @@ static std::atomic<bool> publishedAnyGateIsClosing{false};
 // The control task takes it from here (countdown, resume, give up), but the stop itself
 // does not depend on the control task being in any particular state.
 static std::atomic<bool> publishedPausedByLightBarrier{false};
+// Set when a movement command could not be carried out because a gate already reports that
+// end position - see Gate::getMovementWasRefused().
+static std::atomic<bool> publishedMovementWasRefused{false};
 
 
 //===============================
@@ -92,6 +95,16 @@ static void applyCommandToGate(Gate *gate, const GateCommand &command)
         break;
 
     case GateCommandType::CLOSE_COMPLETELY:
+        // Re-check the barrier here as well, not just when the command was sent. The two
+        // are a control-loop apart, and this is the last point before the motor is asked to
+        // turn. Cheap, and it removes the one cycle in which an obstruction that appeared in
+        // between would have been acted on only afterwards.
+        if (inputLightBarrierIsObstructed())
+        {
+            ESP_LOGW(TAG_GATE_TASK, "Close command ignored - the light barrier is interrupted");
+            publishedPausedByLightBarrier.store(true);
+            break;
+        }
         gate->closeCompletely();
         break;
 
@@ -115,6 +128,12 @@ static void applyCommandToGate(Gate *gate, const GateCommand &command)
         //  - the gate was paused mid-movement  -> resume where it left off
         //  - the gate never started, because the barrier was already obstructed when the
         //    close button was pressed          -> start the closing movement now
+        if (inputLightBarrierIsObstructed())
+        {
+            ESP_LOGW(TAG_GATE_TASK, "Resume ignored - the light barrier is interrupted again");
+            publishedPausedByLightBarrier.store(true);
+            break;
+        }
         if (gate->getIsIdling())
             gate->closeCompletely();
         else
@@ -135,6 +154,7 @@ static void publishGateState()
 {
     publishedGatesAreIdle.store(gateA->getIsIdling() && gateB->getIsIdling());
     publishedAnyGateIsClosing.store(gateA->getIsClosing() || gateB->getIsClosing());
+    publishedMovementWasRefused.store(gateA->getMovementWasRefused() || gateB->getMovementWasRefused());
 }
 
 
@@ -272,6 +292,12 @@ bool anyGateIsClosing()
 bool gatesArePausedByLightBarrier()
 {
     return publishedPausedByLightBarrier.load();
+}
+
+
+bool anyGateRefusedMovement()
+{
+    return publishedMovementWasRefused.load();
 }
 
 

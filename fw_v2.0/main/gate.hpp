@@ -98,6 +98,14 @@ public:
                (state == WAITING_FOR_VFD_STARTUP && nextDirection == false);
     };
 
+    // True when the last movement command could not be carried out because the gate already
+    // reports that end position. Not an error - pressing close on a closed gate is normal -
+    // but the control task uses it to acknowledge that nothing is going to happen, instead
+    // of playing the usual start signal and then standing still. Also the symptom of a limit
+    // switch stuck in the active position.
+    // Cleared as soon as a movement does start.
+    bool getMovementWasRefused() const {return movementWasRefused;};
+
     // Error reporting.
     // ERROR_STATE only lasts a single handle() cycle before the gate returns to
     // IDLE_PARTIALLY_OPEN, so an observer running in another task would almost always miss
@@ -173,6 +181,7 @@ private:
     // Latched error indication, see getErrorLatched(). Written by the gate task, read by
     // the control task - std::atomic makes that explicit.
     std::atomic<bool> errorLatched{false};
+    std::atomic<bool> movementWasRefused{false};
 
     // Variables for pause/resume support
     bool wasOpeningBeforePause = false;

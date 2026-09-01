@@ -176,6 +176,7 @@ bool Gate::checkLimitSwitchClosedActive() {
 // Private helper to start movement in a given direction.
 void Gate::startMovement(bool opening) {
     ESP_LOGI(name, "Starting movement dir=%s...", opening ? "OPENING" : "CLOSING");
+    movementWasRefused = false; // a movement is actually happening
     // when relay is off we need to wait for vfd startup first...
     nextDirection = opening; // store target direction (used in case of waiting for VFD or when pause/resuming)
     // wait for the VFD to finish booting when the relay is off, or was switched on only just now
@@ -285,6 +286,7 @@ void Gate::openCompletely() {
     ESP_LOGI(name, "Received command: Open completely");
     if(checkLimitSwitchOpenActive()){
         ESP_LOGE(name, "Received open command, but Limit-switch-open (pos=%.1f%%) - can not open further...", positionPercent);
+        movementWasRefused = true;
         return;
     }
     targetRunTimeMs = getFullMovementRunTimeMs(); // run longer than necessary, the limit switch stops the movement
@@ -310,6 +312,7 @@ void Gate::closeCompletely() {
     ESP_LOGI(name, "Received command: Close completely");
     if(checkLimitSwitchClosedActive()){
         ESP_LOGE(name, "Received close command, but Limit-switch-closed active and at %.1f%% - can not close further...", positionPercent);
+        movementWasRefused = true;
         return;
     }
     targetRunTimeMs = getFullMovementRunTimeMs(); // run longer than necessary, the limit switch stops the movement
@@ -319,8 +322,18 @@ void Gate::closeCompletely() {
 
 // Public method: update target run time e.g. while already opening
 void Gate::updateTargetRunTime(uint32_t ms) {
-    ESP_LOGI(name, "Received command: To update target run duration from %lld to %ld", targetRunTimeMs, ms);
-    // TODO some checks required? only update when running? limit to range?
+    // Clamp to what a full movement is allowed to take. Without this, enough repeated
+    // presses (each adding BUTTON_PRESS_AGAIN_OPEN_INCREMENT_MS) produce a target longer
+    // than kMovementTimeoutMs, so the gate would stop with a MOVEMENT_TIMEOUT fault
+    // instead of simply opening as far as it can.
+    const uint32_t maxRunTimeMs = getFullMovementRunTimeMs();
+    if (ms > maxRunTimeMs) {
+        ESP_LOGW(name, "Requested run time %lu ms is longer than a full movement -> clamping to %lu ms",
+                 (unsigned long)ms, (unsigned long)maxRunTimeMs);
+        ms = maxRunTimeMs;
+    }
+    ESP_LOGI(name, "Received command: To update target run duration from %llu to %lu",
+             targetRunTimeMs, (unsigned long)ms);
     targetRunTimeMs = ms;
 }
 

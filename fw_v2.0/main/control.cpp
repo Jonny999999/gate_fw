@@ -423,7 +423,18 @@ void controlTask(void *param)
                 }
                 else
                 {
-                    ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
+                    if (anyGateRefusedMovement())
+                    {
+                        // The gate is already at that end - or a limit switch is stuck
+                        // reporting it. Either way nothing moved, so say so instead of
+                        // leaving the user with a start signal and a gate that did not budge.
+                        ESP_LOGW(TAG_CTL, "Nothing to do - a gate already reports that end position");
+                        indicatorBeep(BuzzerSignal::ADDITIONAL_PRESS);
+                    }
+                    else
+                    {
+                        ESP_LOGW(TAG_CTL, "Done - both gates have stopped, returning to idle");
+                    }
                     ctlState = ControlState::IDLE;
                 }
             }

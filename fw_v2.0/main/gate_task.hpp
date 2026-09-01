@@ -56,6 +56,12 @@ bool gatesArePausedByLightBarrier();
 // (including while the VFD is still booting for a closing movement).
 bool anyGateIsClosing();
 
+// True when the last movement command could not be carried out because a gate already
+// reports that end position (e.g. close requested while the closed limit switch is active).
+// Not an error - it lets the control task acknowledge that nothing will happen rather than
+// signalling a start and then standing still.
+bool anyGateRefusedMovement();
+
 // True if a gate reported an error since the last clearGateErrors(). Latched, because
 // ERROR_STATE itself only lasts one handle() cycle.
 bool anyGateHadError();
