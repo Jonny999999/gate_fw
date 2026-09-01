@@ -17,6 +17,7 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done
 | `cleanup-rework` | **`V2.2-rc1`** | ESP-IDF 5.5.1, bugs B1, B3–B10, B14, B15, host tests |
 | `rework-tasks` | **`V2.2-rc2`** | task/queue restructuring, indicator module — all 15 bugs fixed |
 | `ui-rework` | — | Phase 2: automatic closing, gesture rework, hardening (targets V2.3) |
+| `feature/variable-gate-speed` | — | experiment: two speed levels + travel-time measurement (2.6) |
 
 `ui-rework` has been **tested on the gate** (2026-09-01): the UI features work. Three bugs
 only showed up on hardware and are fixed — a task period below one FreeRTOS tick
@@ -298,7 +299,7 @@ Rejected alternatives, kept for the record:
       the area worth protecting is larger than what the sensor sees. The 120 s clear time is
       the mitigation; see whether it feels right.
 
-### 2.6 Variable gate speed — idea, not implemented
+### 2.6 Variable gate speed — proof of concept on branch `feature/variable-gate-speed`
 Right now every movement runs at a single frequency (`DEFAULT_VFD_FREQUENCY`, 50 Hz) from
 standstill to limit switch. A speed curve — slow at the start, faster in the middle, slow
 again before the end — would be gentler on the mechanics and noticeably kinder to the limit
@@ -307,25 +308,79 @@ stops, which currently take the full speed every time.
 `VFD::setFrequency()` already exists and is called on every start, so the drive side is
 there; what is missing is knowing *where* the gate is.
 
-- [ ] **Prerequisite: know the remaining distance.** The time-based estimate in
-      `updatePosition()` is only as good as `runDurationMs`, which is a hand-measured
-      constant per gate. For slowing down *before* the limit switch it has to be right, or
-      the gate either slows too early (slow every time) or too late (no benefit).
-      → Either learn the real travel time (measure limit switch to limit switch on every
-      full movement and average it), or wait for the encoders (3.2), which give the honest
-      answer and would make this exact.
-- [ ] Ramp shape: a few discrete steps are probably enough and much easier to reason about
-      than a continuous curve — e.g. start at ~25 Hz, full speed in the middle, back to
-      ~25 Hz for the last stretch. Each step is one `setFrequency()` call from
-      `Gate::handle()`.
-- [ ] Watch out: the movement timeout and the target run times are all calibrated for a
-      constant speed. A ramp makes every movement longer, so `runDurationMs`,
-      `kMovementTimeoutMs` and the partial-open times all have to be re-derived — that is
-      the main reason this is not a small change.
-- [ ] Also re-check the current-limit obstruction detection: motor current at 25 Hz differs
-      from 50 Hz, so `DEFAULT_VFD_CURRENT_LIMIT` may need to become speed-dependent.
-- [ ] Nice side effect: a slow final approach makes a missed limit switch far less violent,
-      which is the failure mode `kMovementTimeoutMs` currently backstops.
+**Reassessed 2026-09-01, and built as an experiment.** The prerequisite below turned out
+to be overstated: it assumed the speed profile needs to *know the position*, when what it
+actually needs is to know when the movement is roughly one second from its end. Those are
+very different accuracy requirements, and the second one a hand-measured travel time
+already meets.
+
+Two things make the estimate good enough:
+
+- **Slowing down early is free.** It costs a moment, nothing else. There is no equivalent
+  of "stopped in the wrong place" — the limit switch still ends the movement.
+- **The error is one-sided by construction.** The final-approach test holds not only in
+  the last stretch but also *past* where the end was expected, so a late or missed limit
+  switch leaves the gate creeping instead of accelerating back into the stop. The estimate
+  being wrong makes the gate gentler, never more violent.
+
+The re-derivation problem also mostly dissolved once the underlying quantity was named
+correctly: every movement constant in this firmware (`1900 ms` of gap, `10000 ms` of rail)
+describes a **distance** and was only ever written as a time because the speed never
+changed. Integrating speed × time keeps all of them valid, so the partial-open gap stays
+exactly as wide as before. `kMovementTimeoutMs` is the one genuinely wall-clock constant
+and is the only one that had to move.
+
+- [x] **Distance instead of wall-clock time** (`travelledDistanceUs`, `updateTravel()`).
+      The target checks, `pause()`/`resume()` and the position estimate all run on it. This
+      is also the exact quantity encoders would supply (3.2): the integration is the only
+      thing that has to be swapped for a pulse count.
+- [x] **Two discrete speed levels** rather than a continuous curve — one `setFrequency()`
+      per phase change, `kSlowStartDistanceMs` / `kSlowApproachDistanceMs`, behind
+      `VARIABLE_SPEED_ENABLED`.
+- [x] **`kMovementTimeoutMs` raised 15 s → 18 s** while the profile is on, so the margin
+      over a full run stays what it was. Restored to 15 s when it is switched off.
+- [x] **Measure the real travel time on every limit-to-limit run** and log it with the
+      deviation from `runDurationMs` and a running mean. Only logged, never fed back —
+      learning it into NVS is a separate decision, best made with these numbers in hand,
+      and largely pointless if encoders arrive.
+- [x] **Speed-dependent current limit** (`kCurrentLimitSlowAmpere`), currently the same
+      value as at full speed because the slow one has not been measured yet.
+      `LOG_VFD_CURRENT_WHEN_CLOSING` is enabled on the branch to collect it, and no longer
+      costs a second modbus read per cycle.
+- [x] Fixed along the way: `DEFAULT_VFD_FREQUENCY` said **50 Hz and was never read**. The
+      speed actually sent to the drives came from a different constant saying 40, which is
+      what the run durations in `main.cpp` were measured against.
+
+#### What the hardware test has to answer
+The open questions are all physical, and none of them are answered by having encoders —
+they are the reason to test now rather than later:
+
+- [ ] **Does the drive change speed cleanly mid-movement?** `setFrequency()` has only ever
+      been called from standstill. If the drive jolts, refuses, or trips on the change, the
+      whole idea ends here for a few euros of test time.
+- [ ] **Is 25 Hz enough to move the gate at all** — from standstill, and against wind or a
+      stiff spot on the rail? Raise `SLOW_VFD_FREQUENCY` if it stalls; that is the first
+      constant to try.
+- [ ] **What does the motor draw at 25 Hz while closing?** Read it off the
+      `LOG_VFD_CURRENT_WHEN_CLOSING` lines and set `kCurrentLimitSlowAmpere` from real
+      numbers. Until then obstruction detection during the final approach is running on a
+      threshold measured at a different speed.
+- [ ] **How repeatable is the travel time really?** The `FULL TRAVEL measured:` lines give
+      the spread over a session. If it is a few percent, the time-based approach is fine
+      and encoders buy exactness rather than function. If it wanders, that is the argument
+      for 3.2.
+- [ ] **Does the gentler pedestrian gap feel better or just slow?** It is short enough to
+      run at 25 Hz throughout, so it now takes ~3 s instead of ~1.9 s for the same width.
+- [ ] **Is the drive's own accel/decel ramp visible?** The distance integration counts the
+      new speed from the moment the command is sent, while the drive ramps to it over its
+      configured time. Worth a few hundred ms of travel per speed change — check whether
+      full movements now consistently over- or undershoot.
+- [x] Nice side effect, and now explicit in the code: a slow final approach makes a missed
+      limit switch far less violent, which is the failure mode `kMovementTimeoutMs`
+      currently backstops.
+
+Merge only after all of the above. The branch is deliberately a single subject, so it
+either becomes part of V2.3 or is dropped whole.
 
 ### 2.7 Switch the light barrier supply off when it is not needed
 `CONFIG_LIGHTBARRIER_EN_GPIO` (GPIO 14) drives a P-MOSFET for the barrier supply and is
