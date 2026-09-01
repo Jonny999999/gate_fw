@@ -129,8 +129,13 @@ extern "C" void app_main(void)
     //             (gpio, active level), VFD supply relay gpio, VFD,
     //             full run duration 0% -> 100% in ms
     //
-    // Measured full run durations (at 50 Hz, VFD start setting 7):
+    // Measured full run durations (VFD start setting 7):
     //   west gate: ~9 s, east gate: ~10 s   (1 s margin added below)
+    // note: this used to say "at 50 Hz", but the firmware has only ever sent 40 Hz to the
+    //       drives (see DEFAULT_VFD_FREQUENCY in gate.hpp - the constant that said 50 was
+    //       never read). Which of the two the stopwatch actually saw is not recorded, so
+    //       the numbers are worth re-measuring: every full movement now logs its own real
+    //       travel time, see the "FULL TRAVEL measured" lines.
     static Gate gate1West("Gate1_West",
                CONFIG_SW_G1_OPEN_GPIO, 0,   // active low (switch NO to GND -> optocoupler ON)
                CONFIG_SW_G1_CLOSED_GPIO, 1, // active high (switch NC to GND -> optocoupler OFF)
