@@ -10,17 +10,53 @@ time without re-explaining the context.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done
 
-**Progress — three stacked branches, none tested on the gate yet:**
+**Progress — three stacked branches:**
 
 | Branch | Tag | Contents |
 |---|---|---|
 | `cleanup-rework` | **`V2.2-rc1`** | ESP-IDF 5.5.1, bugs B1, B3–B10, B14, B15, host tests |
 | `rework-tasks` | **`V2.2-rc2`** | task/queue restructuring, indicator module — all 15 bugs fixed |
-| `ui-rework` | — | Phase 2: automatic closing, gesture rework (targets V2.3) |
+| `ui-rework` | — | Phase 2: automatic closing, gesture rework, hardening (targets V2.3) |
 
-Test them **in that order, separately**. Each set is small on its own, and some fixes do
-change behaviour (B6 makes position tracking work for the first time, B5 re-enables a dead
-code path). Flashing everything at once makes any regression hard to attribute.
+`ui-rework` has been **tested on the gate** (2026-09-01): the UI features work. Three bugs
+only showed up on hardware and are fixed — a task period below one FreeRTOS tick
+(boot loop), a beep pattern that never turned the buzzer off, and a publish/pending race
+that made the control task leave `MOVING_TO_TARGET` early and silently stop checking the
+light barrier while closing.
+
+`V2.2-rc1` and `V2.2-rc2` have **not** been flashed on their own; the branch above contains
+everything.
+
+### Hardening pass (2026-09-01) — done
+A full read-through after the first successful test, looking for the kind of bug that only
+appears occasionally:
+
+- [x] **A failed VFD start left the relay on forever.** No retry at the Gate level, and the
+      early return skipped `softStopRelay()`, so `relayTimeoutActive` stayed false and the
+      inactivity timeout could never fire. The start is now retried (`kStartAttempts`), and
+      only a genuine failure cuts the supply — necessary, because after a lost reply the
+      drive may be running with nothing tracking it.
+- [x] **Relay inactivity timeout overflowed:** `uint32 × 1000` wrapped, so 3 h really
+      expired after ~37 min while the log said 10800 s. Now 64 bit, and raised to 4 h.
+- [x] **`updateTargetRunTime()` was unclamped:** ~20 repeated presses produced a target
+      longer than the movement timeout, so the gate faulted instead of opening wide.
+- [x] **A refused movement was indistinguishable from an executed one** (close while the
+      closed limit switch is active) — start signal, then nothing. Now acknowledged with a
+      short beep. Also what a stuck limit switch looks like.
+- [x] **`setFrequency()`'s result was ignored.** Now checked, but deliberately not fatal:
+      the drive keeps the same value that is written on every start.
+- [x] **The task watchdog watched nothing of ours.** Control, input and indicator now check
+      in. The gate task stays unwatched on purpose — it blocks on modbus by design.
+- [x] **Gate commands were dropped when the queue was full.** They now wait 200 ms first;
+      losing a STOP is the worst possible outcome.
+- [x] **Barrier re-checked in the gate task** immediately before a closing command is
+      applied, closing the one-cycle window after the control task's own check.
+- [x] **No spurious startup error/beep:** the VFD constructor no longer talks to an
+      unpowered drive, and `Gate` starts in the state its limit switches actually report.
+
+Test them **in that order, separately**, if the branches are ever flashed individually.
+Some fixes do change behaviour (B6 makes position tracking work for the first time, B5
+re-enables a dead code path).
 
 ---
 
@@ -261,6 +297,57 @@ Rejected alternatives, kept for the record:
       is out in seconds, and the light barrier only covers the gateway, not the driveway — so
       the area worth protecting is larger than what the sensor sees. The 120 s clear time is
       the mitigation; see whether it feels right.
+
+### 2.6 Variable gate speed — idea, not implemented
+Right now every movement runs at a single frequency (`DEFAULT_VFD_FREQUENCY`, 50 Hz) from
+standstill to limit switch. A speed curve — slow at the start, faster in the middle, slow
+again before the end — would be gentler on the mechanics and noticeably kinder to the limit
+stops, which currently take the full speed every time.
+
+`VFD::setFrequency()` already exists and is called on every start, so the drive side is
+there; what is missing is knowing *where* the gate is.
+
+- [ ] **Prerequisite: know the remaining distance.** The time-based estimate in
+      `updatePosition()` is only as good as `runDurationMs`, which is a hand-measured
+      constant per gate. For slowing down *before* the limit switch it has to be right, or
+      the gate either slows too early (slow every time) or too late (no benefit).
+      → Either learn the real travel time (measure limit switch to limit switch on every
+      full movement and average it), or wait for the encoders (3.2), which give the honest
+      answer and would make this exact.
+- [ ] Ramp shape: a few discrete steps are probably enough and much easier to reason about
+      than a continuous curve — e.g. start at ~25 Hz, full speed in the middle, back to
+      ~25 Hz for the last stretch. Each step is one `setFrequency()` call from
+      `Gate::handle()`.
+- [ ] Watch out: the movement timeout and the target run times are all calibrated for a
+      constant speed. A ramp makes every movement longer, so `runDurationMs`,
+      `kMovementTimeoutMs` and the partial-open times all have to be re-derived — that is
+      the main reason this is not a small change.
+- [ ] Also re-check the current-limit obstruction detection: motor current at 25 Hz differs
+      from 50 Hz, so `DEFAULT_VFD_CURRENT_LIMIT` may need to become speed-dependent.
+- [ ] Nice side effect: a slow final approach makes a missed limit switch far less violent,
+      which is the failure mode `kMovementTimeoutMs` currently backstops.
+
+### 2.7 Switch the light barrier supply off when it is not needed
+`CONFIG_LIGHTBARRIER_EN_GPIO` (GPIO 14) drives a P-MOSFET for the barrier supply and is
+currently **never driven by the firmware** — the barrier is simply always powered.
+
+- [ ] Only power the barrier while it is actually being used (closing, and while an
+      automatic close is pending), to save the ~6 mA it draws when interrupted.
+- [ ] **Exception that must not be forgotten:** the barrier state is also used for
+      indication and debugging — `SHOW_BARRIER_STATE_ON_LED_IN_IDLE` and
+      `DEBUG_BARRIER_BEEP_ON_CHANGE` in `control.cpp`. If either is enabled the supply has
+      to stay on permanently, otherwise those turn into "always free" and become quietly
+      misleading. The same applies to any future plausibility check on the sensor.
+- [ ] Note the sensor needs time to settle after power-up; the barrier would have to be
+      switched on *before* a closing movement starts, not with it.
+- [ ] Low priority — with PV excess the standby current is not worth much.
+- [ ] **Related, and the more interesting half:** the barrier is fail-unsafe by
+      construction. The NPN sensor pulls low when interrupted, so a dead sensor, a cut wire
+      or an unpowered barrier all read as *free* — the firmware cannot tell "nothing in the
+      way" from "no sensor at all". A switchable supply would actually make a self-test
+      possible: power it down, confirm the input follows, power it back up. Worth keeping in
+      mind if 2.7 is ever implemented, because it turns a power-saving feature into a safety
+      one. No change for now.
 
 ---
 
