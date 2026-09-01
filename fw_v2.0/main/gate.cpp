@@ -127,9 +127,9 @@ void Gate::updateTravel() {
     if (state != MOVING_OPENING && state != MOVING_CLOSING)
         return;  // nothing is moving, so nothing was covered
 
-    // Distance covered in this slice, as full-speed travel time.
-    // At kSpeedFullHz this is simply the elapsed time, which is what the whole firmware
-    // assumed so far; at a lower frequency the gate covers proportionally less ground.
+    // Distance covered in this slice, measured at the reference speed.
+    // At kSpeedReferenceHz this is simply the elapsed time, which is what the whole firmware
+    // assumed so far; slower covers proportionally less ground per millisecond, faster more.
     //
     // Known inaccuracy: the drive does not change speed instantly, it ramps over its own
     // configured accel/decel time, while this counts the new speed from the moment the
@@ -138,7 +138,7 @@ void Gate::updateTravel() {
     // most, and only twice per movement. Well inside what a time-based estimate is worth;
     // if it turns out to matter, that is an argument for encoders (ROADMAP 3.2), not for a
     // more elaborate model of the drive.
-    const uint64_t distanceUs = elapsedUs * currentSpeedHz / kSpeedFullHz;
+    const uint64_t distanceUs = elapsedUs * currentSpeedHz / kSpeedReferenceHz;
     travelledDistanceUs += distanceUs;
 
     const float deltaPercent = (distanceUs / 1000.0f / runDurationMs) * 100.0f;

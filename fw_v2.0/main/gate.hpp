@@ -91,22 +91,15 @@ public:
 
 private:
     // ==== CONFIG ====
-    // Speed the gate runs at. Note this is 40 Hz, NOT the 50 Hz that DEFAULT_VFD_FREQUENCY
-    // and several comments still claim - the unused 'defaultFrequency' member below is what
-    // that macro feeds, and nothing ever read it. The measured run durations in main.cpp
-    // belong to THIS value.
-    static constexpr uint16_t kSpeedFullHz = DEFAULT_VFD_FREQUENCY;
-    static constexpr uint16_t kSpeedSlowHz = SLOW_VFD_FREQUENCY;
-
-    // Shape of the speed profile, given as DISTANCE (full-speed ms, see below) rather than
-    // wall-clock time - "the first 700 ms worth of travel", not "the first 700 ms".
-    // Distances, because that is what stays constant when the speed changes.
-    //
-    // A movement shorter than the sum of the two runs entirely at the slow speed, which is
-    // what happens to the pedestrian gap (1900 ms of travel). That is intentional: the gap
-    // ends up exactly as wide as before, it just opens more gently.
-    static constexpr uint32_t kSlowStartDistanceMs = 700;    // gentle start
-    static constexpr uint32_t kSlowApproachDistanceMs = 1500; // slow before the limit stop
+    // See config_behaviour.h for what each of these means and why it has that value.
+    // kSpeedReferenceHz is the unit every distance constant is measured in, NOT a speed the
+    // gate is ever asked to run at - which is why changing kSpeedFullHz does not invalidate
+    // runDurationMs, the pedestrian gap, or the two distances below.
+    static constexpr uint16_t kSpeedReferenceHz = VFD_FREQUENCY_REFERENCE_HZ;
+    static constexpr uint16_t kSpeedFullHz = VFD_FREQUENCY_FULL_HZ;
+    static constexpr uint16_t kSpeedSlowHz = VFD_FREQUENCY_SLOW_HZ;
+    static constexpr uint32_t kSlowStartDistanceMs = GATE_SLOW_START_DISTANCE_MS;
+    static constexpr uint32_t kSlowApproachDistanceMs = GATE_SLOW_APPROACH_DISTANCE_MS;
     static constexpr float kCurrentLimitAmpere = DEFAULT_VFD_CURRENT_LIMIT;  // Max VFD current when closing for gate to stop
     // Same threshold at the slow speed, until it has been measured. A V/f drive does not
     // draw the same current for the same load at a different frequency, so this almost
@@ -118,17 +111,17 @@ private:
 
     // Hard safety backstop: a movement that has not finished by then is aborted with an error.
     // The only constant in the firmware that is genuinely wall-clock rather than distance,
-    // which is why it is also the only one the speed profile forces to change: the two slow
-    // stretches add roughly (kSlowStartDistanceMs + kSlowApproachDistanceMs) *
-    // (kSpeedFullHz / kSpeedSlowHz - 1) ~ 1.3 s to every full movement. Raised by 3 s so
-    // the margin over a full run stays what it was at constant speed.
-    // 15000 is the value that has been in service since V2.0 - restored when the speed
-    // profile is switched off, so that path is unchanged.
-#if VARIABLE_SPEED_ENABLED
-    static constexpr uint32_t kMovementTimeoutMs = 18000;
-#else
+    // so it is also the only one that has to be checked whenever a speed changes.
+    // Deliberately left at the value that has been in service since V2.0 - it still fits:
+    //
+    //   east gate, 11000 ms of rail, profile on at 60/25 Hz
+    //     slow  2200 * 40/25 = 3520 ms  +  fast 8800 * 40/60 = 5867 ms  ~  9.4 s
+    //   same with the full speed back at 40 Hz          3520 + 8800  ~ 12.3 s
+    //   profile off, 40 Hz (what ran until now)                        ~ 11.0 s
+    //
+    // The tightest of those still leaves 2.7 s. Recheck this arithmetic before lowering
+    // VFD_FREQUENCY_FULL_HZ or widening the slow phases much further.
     static constexpr uint32_t kMovementTimeoutMs = 15000;
-#endif
 
     // Guaranteed gap between the target run time and the safety backstop.
     // Previously 'runDurationMs + 5000' could equal or exceed kMovementTimeoutMs (exactly
@@ -143,7 +136,7 @@ private:
 
     // ==== Movement distance bookkeeping ====
     // A movement's target is a DISTANCE, not a wall-clock duration - expressed as the
-    // number of milliseconds the gate would need to cover it at kSpeedFullHz.
+    // number of milliseconds the gate would need to cover it at kSpeedReferenceHz.
     //
     // At a constant speed the two are the same thing, which is why the firmware could get
     // away with comparing elapsed time against targetRunTimeMs so far. As soon as the speed
@@ -153,8 +146,6 @@ private:
     //
     // This is also exactly the quantity encoders would provide directly (ROADMAP 3.2): swap
     // the integration in updateTravel() for a pulse count and nothing else has to change.
-    static constexpr uint32_t kDistancePerMsAtFullSpeed = 1;  // by definition, see above
-
     // How often the start command is sent before giving up on the drive.
     // The command is idempotent ("run in this direction"), so a lost or garbled reply can
     // simply be repeated - which is far more likely than the drive actually refusing to
@@ -173,9 +164,9 @@ private:
     // note: buzzer / LED are no longer reached through a pointer - the indicator task is
     // addressed by free functions from indicator.hpp
 
-    // note: a 'defaultFrequency' member used to sit here, fed from DEFAULT_VFD_FREQUENCY.
-    //       Nothing ever read it - the speed really written to the drive came from a
-    //       separate constant with a different value. Removed; kSpeedFullHz is the one.
+    // note: a 'defaultFrequency' member used to sit here, claiming 50 Hz. Nothing ever read
+    //       it - the speed really written to the drive came from a separate constant saying
+    //       40. Removed; the speeds above are the ones.
     const uint32_t runDurationMs;  // Full run duration (0% to 100%) in milliseconds
 
     // note: all members below are given a defined default here.

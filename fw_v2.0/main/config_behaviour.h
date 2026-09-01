@@ -34,7 +34,7 @@
 
 // Log the motor current (with the speed it was measured at) on every check while closing.
 // Enabled on this branch on purpose: the obstruction threshold below was measured at a
-// single speed, and what the motor draws at SLOW_VFD_FREQUENCY is exactly the number this
+// single speed, and what the motor draws at VFD_FREQUENCY_SLOW_HZ is exactly the number this
 // experiment still owes. See kCurrentLimitSlowAmpere.
 #define LOG_VFD_CURRENT_WHEN_CLOSING
 #define CURRENT_MONITORING_ENABLED
@@ -43,27 +43,66 @@
 //===============================
 //======= Gate speed ============
 //===============================
-// Motor speed in Hz. 40 Hz is what the gate has always actually run at - the constant used
-// to say 50 and was simply never read (see the note on kSpeedFullHz), while the movement
-// timings in main.cpp were measured against the 40 Hz the drive was really given.
-#define DEFAULT_VFD_FREQUENCY 40
+// Reference speed: the frequency every DISTANCE constant in this firmware is expressed in.
+// "The rail is 10000 ms long", "the gap is 1900 ms wide" - both mean at 40 Hz.
+//
+// 40 Hz is also what actually ran the gate in production from V2.0 (2025-04) through
+// V2.2 - unchanged for the whole time the system has been in service. Note the firmware
+// never ran at the 50 Hz a constant here used to claim: that constant was never read.
+//
+// Changing the speed the gate runs at must NOT change this one. It is the unit those
+// measurements are in, not a speed setting - keeping it fixed is what lets the full speed
+// below be changed without re-measuring the rail, the pedestrian gap and everything else.
+// Only re-measuring the gate itself (a new motor, a new gearing) is a reason to touch it,
+// and then every distance constant has to be re-measured with it.
+#define VFD_FREQUENCY_REFERENCE_HZ 40
+
+// Speed the gate actually runs at in the middle of a movement.
+// 60 Hz to make the difference to the slow phases obvious during the experiment; 40 Hz is
+// the value with years of service behind it.
+//
+// Safe on these drives, but only because of how they are parameterised - check both before
+// raising it further (doc/vfd/T13-400W-12-H_parameters_edit.pdf):
+//   -1.7- Maximum frequency is set to 70 Hz (factory 50). Anything above that is silently
+//         clamped by the drive, which would also make the distance bookkeeping wrong - it
+//         assumes the drive runs at what it was asked for.
+//   -2.0- Corresponding frequency of the highest output voltage is 99.9 Hz (west) / 95 Hz
+//         (east) - deliberately set high to run the motors on reduced voltage. The V/f
+//         ratio is therefore still constant at 60 Hz, so this is NOT field weakening and
+//         there is no torque loss; a drive left at the factory 50 Hz would lose torque
+//         above 50 Hz instead.
+#define VFD_FREQUENCY_FULL_HZ 60
+
+// Speed for the gentle start and the final approach.
+// Note the drive's low-speed torque boost (-0.3- / -0.4-) only reaches up to 20 Hz, so
+// 25 Hz gets plain reduced voltage. If the gate stalls or struggles at the slow speed, this
+// is the first constant to raise - or extend the boost range on the drive.
+#define VFD_FREQUENCY_SLOW_HZ 25
 
 // Variable gate speed - PROOF OF CONCEPT, see ROADMAP 2.6.
-// Set to 0 to get exactly the previous behaviour back: one constant speed from standstill
-// to limit switch.
+// Set to 0 for one constant speed from standstill to limit switch, as before.
 //
 // The gate starts gently, runs at full speed in the middle, and slows down again for the
-// last stretch before the limit stop - which today takes the full 40 Hz on every single
-// movement and is the part of the mechanics that suffers for it.
+// last stretch before the limit stop - which today takes the full speed on every single
+// movement and is the part of the mechanics that suffers for it. The drive's own
+// deceleration ramp (-0.2- stop time) means the gate keeps moving for a moment after the
+// limit switch is reached, so arriving slowly shortens that overtravel as well.
 //
-// Deliberately time-based and crude. The two slow stretches are only a second or so of
-// travel each, and starting one too early merely costs a moment while starting one too
-// late costs nothing that is not already the case today - so the position estimate does
-// not have to be good, it only has to be roughly right. Encoders (ROADMAP 3.2) would make
-// it exact, but they are not a prerequisite for finding out whether the feature is worth
+// Deliberately time-based and crude. Starting a slow phase too early merely costs a moment,
+// and the final-approach test also holds once the gate has travelled PAST where the end was
+// expected - so the position estimate does not have to be good, only roughly right, and
+// being wrong makes the gate gentler rather than more violent. Encoders (ROADMAP 3.2) would
+// make it exact, but they are not a prerequisite for finding out whether this is worth
 // having at all.
 #define VARIABLE_SPEED_ENABLED 1
-#define SLOW_VFD_FREQUENCY 25 // speed for the gentle start and the final approach
+
+// Shape of the profile, as DISTANCE at the reference speed - "the first 700 ms worth of
+// travel", not "the first 700 ms".
+// A movement shorter than the sum of the two runs slowly throughout, which is what happens
+// to the pedestrian gap (1900 ms of travel): it ends up exactly as wide as before and just
+// opens more gently. Lower these if the gap should benefit from the higher full speed too.
+#define GATE_SLOW_START_DISTANCE_MS 700
+#define GATE_SLOW_APPROACH_DISTANCE_MS 1500
 
 #define BEEP_AT_LIMIT_SW_CHANGE
 
