@@ -60,6 +60,11 @@ public:
     // The state machine to be called periodically.
     void handle();
 
+    // How far this gate travels between its limit switches, in travel-ms at the reference
+    // speed. The learned value, which starts out as the configured constant - see the notes
+    // on the learning members below.
+    uint32_t effectiveFullTravelMs() const {return fullTravelMs;};
+
     // Retrieve the current state.
     GateState getState() const {return state;};
     bool getIsIdling() const {return state == IDLE_FULLY_OPEN || state == IDLE_FULLY_CLOSED || state == IDLE_PARTIALLY_OPEN;};
@@ -213,43 +218,56 @@ private:
     // against - and the only place the position estimate is used for anything but logging.
     uint32_t expectedTravelDistanceMs = 0;
 
-    //--- measured travel time (diagnostic, ROADMAP 2.6) ---
-    // A movement that starts on one limit switch and ends on the other has covered the
-    // whole rail, so its duration IS the real runDurationMs for this gate - the one value
-    // the time-based position estimate stands or falls with, and currently a constant
-    // measured by hand once. Measuring it on every full run costs nothing and answers the
-    // question the variable-speed experiment depends on: how repeatable is it really?
+    //=====================================================
+    //===== Learned full travel (ROADMAP 2.6) =============
+    //=====================================================
+    // How far this gate really travels, limit switch to limit switch, in travel-ms at
+    // kSpeedReferenceHz. EVERYTHING that scales a position goes through
+    // effectiveFullTravelMs() rather than reading the configured constant, because that
+    // constant is hand-measured and was 13-21% too large - which put the whole final
+    // approach past the point where the gate actually stops.
     //
-    // Deliberately only logged, never fed back into runDurationMs. Learning the value at
-    // runtime (and storing it in NVS) is a separate decision that should be made with these
-    // numbers in hand, not before - and it is largely pointless if encoders arrive (3.2).
-    bool movementStartedAtOppositeLimit = false;  // set when the motor starts, see startMovement()
-    uint32_t measuredFullTravelCount = 0;         // how many full runs have been measured
-    uint32_t measuredFullTravelAverageMs = 0;     // running mean of those, wall-clock ms
-    // Number of runs the means are averaged over once they have settled. A plain running
-    // mean over every run ever measured stops moving: after a few thousand movements a new
-    // measurement shifts it by well under a millisecond, so it would freeze at whatever the
-    // gate was like in its first weeks instead of following it. Capping the weight turns it
-    // into a moving average that keeps tracking - which is the whole point of measuring.
-    static constexpr uint32_t kFullTravelAverageRuns = 20;
-    // Running mean of the same runs measured as DISTANCE (travel-ms at kSpeedReferenceHz).
-    // This is the one the speed profile needs: wall-clock time depends on which speeds the
-    // movement happened to use, distance does not.
-    uint32_t measuredFullTravelDistanceMs = 0;
+    // A movement that starts on one limit switch and ends on the other has covered exactly
+    // the rail, so its travelled distance IS this value, measured under real conditions.
+    // Three rules guard what is allowed to become one:
+    //
+    //   1. only an UNINTERRUPTED full run counts (measurementIsValid). Started on one limit
+    //      switch, ended on the other, nothing in between - no light barrier pause, no stop,
+    //      no cancel. A resumed movement only measures the part after the resume, and a
+    //      pause while the gate still sits on the switch would otherwise pass unnoticed
+    //      because the movement still "starts on a limit switch".
+    //   2. only a measurement inside a tolerance band around the CONFIGURED constant counts.
+    //      Anchoring the band to the constant rather than to the current estimate is what
+    //      makes drift impossible: the learned value cannot walk away from the hand-measured
+    //      reality one small accepted step at a time, however many runs go by. It also means
+    //      correcting the constant in main.cpp re-bounds a stored value, which is the reset
+    //      mechanism if one is ever needed.
+    //   3. an accepted measurement is weighted in, never adopted outright, so one odd run
+    //      cannot move the gate's behaviour much.
+    bool movementStartedAtOppositeLimit = false; // set when the motor starts, see startMovement()
+    bool measurementIsValid = false;             // cleared by anything that interrupts the run
 
-public:
-    // How far this gate really travels, limit switch to limit switch, in travel-ms.
-    // The measured average as soon as there is one, the configured constant until then.
-    //
-    // Everything that needs to know where the gate is goes through here rather than reading
-    // runDurationMs directly. That constant is hand-measured and was 13-21% too large, which
-    // put the whole 'last N ms' window past the point where the gate actually stops - so the
-    // final approach barely happened. Measuring it makes that self-correcting.
-    uint32_t effectiveFullTravelMs() const {
-        return (measuredFullTravelCount > 0) ? measuredFullTravelDistanceMs : runDurationMs;
+    uint32_t fullTravelMs;                    // current best estimate (set in the constructor)
+    uint32_t measuredFullTravelCount = 0;     // accepted measurements since boot
+    uint32_t measuredFullTravelAverageMs = 0; // the same runs as wall-clock ms, for the log
+
+    // Weight of a new measurement: 1/8, so the estimate converges within about ten runs but
+    // no single run moves it by more than ~12%. A plain running mean was worse in both
+    // directions - it adopted the very first measurement outright, and after a few thousand
+    // runs a new one shifted it by well under a millisecond, freezing it at whatever the
+    // gate was like in its first weeks.
+    static constexpr int32_t kFullTravelAverageDivisor = 8;
+
+    // How far a measurement may be from the configured constant and still be believed. Wide
+    // enough for real seasonal and wear-related change, narrow enough that a mismeasured run
+    // is rejected rather than learned.
+    static constexpr float kFullTravelToleranceFraction = 0.25f;
+    uint32_t minPlausibleFullTravelMs() const {
+        return (uint32_t)(runDurationMs * (1.0f - kFullTravelToleranceFraction));
     };
-
-private:
+    uint32_t maxPlausibleFullTravelMs() const {
+        return (uint32_t)(runDurationMs * (1.0f + kFullTravelToleranceFraction));
+    };
 
     // Variables to track previous state of limit switches (for logging changes)
     bool prevOpenSwitchState = false;
@@ -314,8 +332,11 @@ private:
         return (uint32_t)std::min<uint64_t>(worstCaseWallMs + kMovementTimeoutMarginMs,
                                             kMovementTimeoutCeilingMs);
     };
-    // Log the real travel time if this movement ran from one limit switch to the other.
-    // Called from handle() the moment the far limit switch is reached.
+    // Give up on measuring the current run, with a reason for the log. Called from
+    // everything that can stop a movement before it reaches the far limit switch.
+    void invalidateMeasurement(const char *reason);
+    // Judge and, if it survives all three rules, learn the travel of the movement that just
+    // ended. Called from handle() the moment the far limit switch is reached.
     void reportFullTravelIfMeasured();
     bool checkLimitSwitchOpenActive();
     bool checkLimitSwitchClosedActive();

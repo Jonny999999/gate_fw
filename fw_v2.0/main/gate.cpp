@@ -32,7 +32,8 @@ Gate::Gate(const char *name,
                                      vfd(vfd),
                                      runDurationMs(runDurationMs),
 
-                                     state(IDLE_PARTIALLY_OPEN), relayTimeoutActive(false), relayOn(false), positionPercent(0.0f)
+                                     state(IDLE_PARTIALLY_OPEN), relayTimeoutActive(false), relayOn(false), positionPercent(0.0f),
+                                     fullTravelMs(runDurationMs)
                                      // note: state and positionPercent are set properly from the limit switches in the body
 {
     gpio_set_direction(kLimitSwitchOpenGpio, GPIO_MODE_INPUT);
@@ -247,44 +248,66 @@ bool Gate::checkLimitSwitchOpenActive() {
 }
 
 
+void Gate::invalidateMeasurement(const char *reason) {
+    if (!measurementIsValid)
+        return;
+    ESP_LOGI(name, "Full travel measurement discarded: %s", reason);
+    measurementIsValid = false;
+    movementStartedAtOppositeLimit = false;
+}
+
+
 void Gate::reportFullTravelIfMeasured() {
     if (!movementStartedAtOppositeLimit)
         return;  // started somewhere in the middle - says nothing about the full travel
-    movementStartedAtOppositeLimit = false;  // report once per movement
+    movementStartedAtOppositeLimit = false;  // decide once per movement
 
     const uint32_t measuredMs = (uint32_t)((micros() - timestampStartUs) / 1000);
     const uint32_t measuredDistanceMs = travelledDistanceMs();
 
-    // Plausibility: a movement that was paused and resumed while the gate had not yet left
-    // the limit switch also starts "on" it, but timestampStartUs then only covers the
-    // resumed part. Anything far short of the expected travel is not a full run.
-    // Checked on the distance, so the verdict does not depend on which speeds were used.
-    if (measuredDistanceMs < effectiveFullTravelMs() / 2) {
-        ESP_LOGD(name, "Ignoring implausible full travel measurement of %lu ms of travel",
+    //--- 1. was the run clean? ---
+    // invalidateMeasurement() has already logged why if it was not.
+    if (!measurementIsValid) {
+        ESP_LOGI(name, "CALIBRATION: reached the far limit switch after %lu ms of travel, "
+                       "but the run was interrupted - not used",
                  (unsigned long)measuredDistanceMs);
         return;
     }
+    measurementIsValid = false;
 
-    // Deviation from whatever the gate was working with before this run.
-    const uint32_t previousFullTravelMs = effectiveFullTravelMs();
-    const float deviationPercent =
-        ((float)measuredDistanceMs - (float)previousFullTravelMs) / previousFullTravelMs * 100.0f;
+    //--- 2. is the number believable? ---
+    // Judged against the CONFIGURED constant, never against the current estimate, so that
+    // a sequence of small accepted steps can never walk the value away from reality.
+    if (measuredDistanceMs < minPlausibleFullTravelMs() || measuredDistanceMs > maxPlausibleFullTravelMs()) {
+        ESP_LOGW(name, "CALIBRATION: REJECTED %lu ms of travel - outside the plausible band "
+                       "%lu..%lu ms (configured %lu ms +/-%.0f%%). Estimate stays at %lu ms",
+                 (unsigned long)measuredDistanceMs,
+                 (unsigned long)minPlausibleFullTravelMs(), (unsigned long)maxPlausibleFullTravelMs(),
+                 (unsigned long)runDurationMs, kFullTravelToleranceFraction * 100.0f,
+                 (unsigned long)fullTravelMs);
+        return;
+    }
 
-    // Running means, computed in place so no history has to be kept.
-    // The weight is capped at kFullTravelAverageRuns, which makes this a moving average
-    // once that many runs are in - see the note there.
+    //--- 3. weight it in ---
+    const uint32_t previousFullTravelMs = fullTravelMs;
+    fullTravelMs += ((int32_t)measuredDistanceMs - (int32_t)fullTravelMs) / kFullTravelAverageDivisor;
     measuredFullTravelCount++;
-    const int32_t weight = (int32_t)std::min(measuredFullTravelCount, kFullTravelAverageRuns);
-    measuredFullTravelAverageMs += ((int32_t)measuredMs - (int32_t)measuredFullTravelAverageMs) / weight;
-    measuredFullTravelDistanceMs += ((int32_t)measuredDistanceMs - (int32_t)measuredFullTravelDistanceMs) / weight;
+    // Wall clock is kept for the log only: it depends on which speeds the movement happened
+    // to use, which is exactly what makes it useless for calibration and interesting to see.
+    if (measuredFullTravelCount == 1)
+        measuredFullTravelAverageMs = measuredMs;
+    else
+        measuredFullTravelAverageMs += ((int32_t)measuredMs - (int32_t)measuredFullTravelAverageMs)
+                                       / kFullTravelAverageDivisor;
 
-    ESP_LOGW(name, "FULL TRAVEL measured: %lu ms of travel (%lu ms wall clock), "
-                   "was working with %lu -> %+.1f%%. Now using %lu ms of travel "
-                   "(%lu ms wall clock), averaged over %lu of %lu runs",
+    ESP_LOGW(name, "CALIBRATION: measured %lu ms of travel (%lu ms wall clock, %+.1f%% off the "
+                   "estimate) -> estimate %lu -> %lu ms (1/%ld weight, %lu accepted runs, "
+                   "wall clock ~%lu ms)",
              (unsigned long)measuredDistanceMs, (unsigned long)measuredMs,
-             (unsigned long)previousFullTravelMs, deviationPercent,
-             (unsigned long)effectiveFullTravelMs(), (unsigned long)measuredFullTravelAverageMs,
-             (unsigned long)weight, (unsigned long)measuredFullTravelCount);
+             ((float)measuredDistanceMs - (float)previousFullTravelMs) / previousFullTravelMs * 100.0f,
+             (unsigned long)previousFullTravelMs, (unsigned long)fullTravelMs,
+             (long)kFullTravelAverageDivisor, (unsigned long)measuredFullTravelCount,
+             (unsigned long)measuredFullTravelAverageMs);
 }
 
 
@@ -381,6 +404,7 @@ void Gate::startMovement(bool opening) {
         // turning and nothing here is tracking it any more - no target run time, no limit
         // switch check. Cutting the supply is the only action that is correct either way.
         ESP_LOGE(name, "VFD did not start after %d attempts -> cutting the VFD supply", kStartAttempts);
+        invalidateMeasurement("VFD did not start");
         indicatorBeep(BuzzerSignal::FAULT);
         indicatorSetFault(FaultCode::VFD_COMMUNICATION);
         forceStopRelay();
@@ -407,6 +431,9 @@ void Gate::startMovement(bool opening) {
     // Note this reads the switch the gate is moving AWAY from - opening starts at closed.
     movementStartedAtOppositeLimit = opening ? checkLimitSwitchClosedActive()
                                              : checkLimitSwitchOpenActive();
+    // A run only measures the rail if nothing interrupts it. Anything that stops the gate
+    // before it reaches the far switch clears this again - see invalidateMeasurement().
+    measurementIsValid = movementStartedAtOppositeLimit;
 
     // Where this movement is expected to end - the final approach is timed against it.
     recomputeExpectedTravelDistance();
@@ -525,6 +552,10 @@ void Gate::updateTargetRunTime(uint32_t ms) {
 
 void Gate::stop(bool forceStatePartialOpen){ // default true
     ESP_LOGI(name, "stopping gate, turning off motor (current state=%s)", GateState_str[(int)state]);
+    // note: the limit switch branches in handle() call reportFullTravelIfMeasured() BEFORE
+    // stop(), so a movement that ends properly has already been measured by now. Anything
+    // else that reaches this point ended early.
+    invalidateMeasurement("movement stopped");
     esp_err_t err = vfd->stop();
     #ifndef IGNORE_VFD_ERROR
     if (err != ESP_OK) {
@@ -557,6 +588,7 @@ void Gate::pause() {
         return;
     }
     ESP_LOGW(name, "Pause requested, stopping gate...");
+    invalidateMeasurement("movement paused");
 
     // 1. capture everything that describes the interrupted movement.
     //    This MUST happen before stop(), because stop() overwrites state with
@@ -611,11 +643,18 @@ void Gate::resume() {
     ESP_LOGI(name, "Resuming gate movement (%s). Remaining target run time: %llu ms",
              wasOpeningBeforePause ? "OPENING" : "CLOSING", targetRunTimeMs);
     startMovement(wasOpeningBeforePause);
+    // A resumed movement can never measure the rail, and startMovement() has just re-armed
+    // the measurement because it looks like any other start. It matters for the one case
+    // rule 1 exists for: a pause while the gate is still sitting on the limit switch, where
+    // the resumed run does start on a switch and does reach the other one, but only times
+    // the part after the pause.
+    invalidateMeasurement("movement was resumed");
 }
 
 // Public method: cancel movement
 void Gate::cancel() {
     ESP_LOGI(name, "Cancel requested. Stopping gate immediately");
+    invalidateMeasurement("movement cancelled");
     stop(true);
     state = IDLE_PARTIALLY_OPEN;
 }
@@ -657,6 +696,7 @@ void Gate::handle() {
         if ((currentTimeUs - timestampStartUs) >= ((uint64_t)getMovementTimeoutMs() * 1000))
         {
             ESP_LOGE(name, "Open movement timeout exceeded.");
+            invalidateMeasurement("movement timed out");
             indicatorSetFault(FaultCode::MOVEMENT_TIMEOUT);
             stop(false);
             state = ERROR_STATE;
@@ -697,6 +737,7 @@ void Gate::handle() {
         if ((currentTimeUs - timestampStartUs) >= ((uint64_t)getMovementTimeoutMs() * 1000))
         {
             ESP_LOGE(name, "Close movement timeout exceeded.");
+            invalidateMeasurement("movement timed out");
             indicatorSetFault(FaultCode::MOVEMENT_TIMEOUT);
             stop(false);
             state = ERROR_STATE;
@@ -725,6 +766,7 @@ void Gate::handle() {
         #ifdef CURRENT_MONITORING_ENABLED
         else if (checkCurrentLimitExceeded()){
             ESP_LOGE(name, "Max vfd current exceeded while closing! stopping");
+            invalidateMeasurement("obstruction detected");
             stop(false);
             indicatorBeep(BuzzerSignal::OBSTRUCTION_DETECTED);
             indicatorSetFault(FaultCode::OBSTRUCTION);
