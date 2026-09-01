@@ -21,7 +21,14 @@
 // TODO: test individual delay for each VFD
 
 // #define IGNORE_VFD_ERROR // if defined does not force realy off when stop command fails
-#define RELAY_INACTIVITY_TIMEOUT_MS (3*60 + 0)*60*1000  // 1h too short (often off during active day) -> 3h 0min
+// How long the VFD supply relay stays on after the last movement.
+// 1 h was too short (the drives were often off during an active day, costing the ~870 ms
+// startup delay every time). 3 h was better, 4 h is comfortable - keeping the drives
+// powered is no longer a concern with PV excess.
+// note: written as UL and multiplied out in 64 bit at the point of use, see handle().
+//       (4 h in microseconds does not fit in 32 bits, which is what the 3 h setting silently
+//        ran into: it wrapped and expired after ~37 minutes instead.)
+#define RELAY_INACTIVITY_TIMEOUT_MS ((4UL*60 + 0)*60*1000UL)
 
 // #define LOG_VFD_CURRENT_WHEN_CLOSING
 #define CURRENT_MONITORING_ENABLED

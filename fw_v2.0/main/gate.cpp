@@ -440,9 +440,12 @@ void Gate::handle() {
     uint64_t currentTimeUs = micros();
 
     // Check for relay inactivity in idle states. TODO: verify in idle states?
-    if (relayTimeoutActive && (currentTimeUs - lastActivityTimestampUs > kRelayInactivityTimeoutMs * 1000))
+    // note: the cast matters. kRelayInactivityTimeoutMs * 1000 is 32 bit arithmetic and
+    //       wraps for anything above ~71 minutes - the 3 h setting actually expired after
+    //       ~37 minutes while the log dutifully printed 10800 s.
+    if (relayTimeoutActive && (currentTimeUs - lastActivityTimestampUs > (uint64_t)kRelayInactivityTimeoutMs * 1000))
     {
-        ESP_LOGW(name, "Relay inactivity timeout of %lds reached. Forcing relay OFF...", kRelayInactivityTimeoutMs / 1000);
+        ESP_LOGW(name, "Relay inactivity timeout of %lu s reached. Forcing relay OFF...", (unsigned long)(kRelayInactivityTimeoutMs / 1000));
         forceStopRelay();
     }
 
