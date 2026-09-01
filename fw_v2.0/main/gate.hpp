@@ -117,7 +117,11 @@ public:
 
 private:
     // ==== CONFIG ====
-    static constexpr float kDefaultVfdFrequency = 40.0f;  // Frequency (Hz) to use when running
+    // Speed the gate runs at. Note this is 40 Hz, NOT the 50 Hz that DEFAULT_VFD_FREQUENCY
+    // and several comments still claim - the unused 'defaultFrequency' member below is what
+    // that macro feeds, and nothing ever read it. The measured run durations in main.cpp
+    // belong to THIS value.
+    static constexpr uint16_t kSpeedFullHz = 40;
     static constexpr float kCurrentLimitAmpere = DEFAULT_VFD_CURRENT_LIMIT;  // Max VFD current when closing for gate to stop
     static constexpr uint32_t kRelayInactivityTimeoutMs = RELAY_INACTIVITY_TIMEOUT_MS;      // Inactivity timeout (for relay turn-off)
 
@@ -135,6 +139,20 @@ private:
     // How much longer than the measured travel time a full open/close is allowed to run,
     // so the limit switch is definitely reached.
     static constexpr uint32_t kFullMovementExtraTimeMs = 5000;
+
+    // ==== Movement distance bookkeeping ====
+    // A movement's target is a DISTANCE, not a wall-clock duration - expressed as the
+    // number of milliseconds the gate would need to cover it at kSpeedFullHz.
+    //
+    // At a constant speed the two are the same thing, which is why the firmware could get
+    // away with comparing elapsed time against targetRunTimeMs so far. As soon as the speed
+    // can change during a movement they part ways, and every constant in the firmware
+    // ('open for 1900 ms', 'a full run takes 10000 ms') means the distance, never the clock.
+    // Integrating speed x time keeps all of those constants valid unchanged.
+    //
+    // This is also exactly the quantity encoders would provide directly (ROADMAP 3.2): swap
+    // the integration in updateTravel() for a pulse count and nothing else has to change.
+    static constexpr uint32_t kDistancePerMsAtFullSpeed = 1;  // by definition, see above
 
     // How often the start command is sent before giving up on the drive.
     // The command is idempotent ("run in this direction"), so a lost or garbled reply can
@@ -162,7 +180,7 @@ private:
     // check and the limit-switch change detection ran on garbage during the first cycles
     // after boot).
     uint64_t timestampStartUs = 0; // Timestamp (in microseconds) when movement started
-    uint64_t targetRunTimeMs = 0;  // Desired movement duration (in MILLIseconds) for partial moves
+    uint64_t targetRunTimeMs = 0;  // Distance the current movement should cover, in full-speed ms
 
     GateState state;               // Current state of the gate (set in the constructor)
     bool nextDirection = false;    // Store desired gate direction while waiting for vfd startup
@@ -173,6 +191,14 @@ private:
 
     float positionPercent;         // Current estimated position (0% = closed, 100% = open)
     uint64_t lastPositionUpdateTimestampUs = 0; // Timestamp of last position update
+
+    // Distance covered since the motor started turning, in full-speed ms (see above).
+    // Reset in startMovement() at the moment the motor actually starts, not when the
+    // command is received - the VFD startup delay must not count as travel.
+    uint32_t travelledDistanceMs = 0;
+    // Speed the drive is currently asked to run at. Only ever changed through setSpeed(),
+    // so updateTravel() can weight the elapsed time with the speed it was covered at.
+    uint16_t currentSpeedHz = kSpeedFullHz;
 
     // Variables to track previous state of limit switches (for logging changes)
     bool prevOpenSwitchState = false;
@@ -186,13 +212,18 @@ private:
     // Variables for pause/resume support
     bool wasOpeningBeforePause = false;
     uint64_t pauseStartTimestampUs = 0;
-    uint64_t remainingRunTimeAtPauseMs = 0; // run time left when pause() was called (0 = target already reached)
+    uint64_t remainingRunTimeAtPauseMs = 0; // distance left when pause() was called (0 = target already reached)
 
     // Private helper methods.
     void startRelay();
     void softStopRelay();
     void forceStopRelay();
-    void updatePosition();
+    // Integrate the time since the last call into travelledDistanceMs and positionPercent,
+    // weighted by the speed it was actually covered at.
+    void updateTravel();
+    // Ask the drive for a new frequency and remember it. Travel is settled first, so the
+    // stretch already covered is accounted for at the old speed.
+    void setSpeed(uint16_t frequencyHz);
 
     // Target run time for a full open / close: long enough to reach the limit switch,
     // but always clearly below the safety backstop.

@@ -119,17 +119,51 @@ void Gate::forceStopRelay() {
 
 
 
-void Gate::updatePosition() {
-    uint64_t currentTimeUs = micros();
-    uint64_t elapsed = currentTimeUs - lastPositionUpdateTimestampUs;
-    float deltaPercent = (elapsed / (float)(runDurationMs * 1000)) * 100.0f;
+void Gate::updateTravel() {
+    const uint64_t currentTimeUs = micros();
+    const uint64_t elapsedUs = currentTimeUs - lastPositionUpdateTimestampUs;
+    lastPositionUpdateTimestampUs = currentTimeUs;
+
+    // Distance covered in this slice, expressed as full-speed milliseconds.
+    // At kSpeedFullHz this is simply the elapsed time, which is what the whole firmware
+    // assumed so far; at a lower frequency the gate covers proportionally less ground.
+    // Rounded to whole milliseconds - the gate task steps this every 10 ms, so the
+    // rounding error is far below the accuracy of the travel time it is measured against.
+    const uint32_t distanceMs = (uint32_t)((elapsedUs / 1000) * currentSpeedHz / kSpeedFullHz);
+
+    if (state != MOVING_OPENING && state != MOVING_CLOSING)
+        return;  // nothing is moving, so nothing was covered
+
+    travelledDistanceMs += distanceMs;
+
+    const float deltaPercent = (distanceMs / (float)runDurationMs) * 100.0f;
     if (state == MOVING_OPENING) {
         positionPercent = std::min(100.0f, positionPercent + deltaPercent);
-    } else if (state == MOVING_CLOSING) {
+    } else {
         positionPercent = std::max(0.0f, positionPercent - deltaPercent);
     }
-    lastPositionUpdateTimestampUs = currentTimeUs;
-    ESP_LOGD(name, "Position updated: %.2f%% - timeElapsed=%lld -> deltaPercent=%f", positionPercent, elapsed, deltaPercent);
+    ESP_LOGD(name, "Travel updated: pos=%.2f%%, distance=%lu ms at %u Hz (+%lu ms)",
+             positionPercent, (unsigned long)travelledDistanceMs, currentSpeedHz,
+             (unsigned long)distanceMs);
+}
+
+
+void Gate::setSpeed(uint16_t frequencyHz) {
+    if (frequencyHz == currentSpeedHz)
+        return;
+    // Settle the distance covered so far BEFORE switching, so the stretch just completed is
+    // counted at the speed it was actually driven at.
+    updateTravel();
+    ESP_LOGI(name, "Changing speed %u Hz -> %u Hz (at %lu ms travelled, pos ~%.0f%%)",
+             currentSpeedHz, frequencyHz, (unsigned long)travelledDistanceMs, positionPercent);
+    // A failed frequency write is deliberately not fatal, for the same reason as in
+    // startMovement(): the drive simply keeps the speed it has and the movement stays
+    // correct, only less gentle. currentSpeedHz is therefore only updated on success,
+    // so the distance integration keeps matching what the motor is really doing.
+    if (vfd->setFrequency(frequencyHz) == ESP_OK)
+        currentSpeedHz = frequencyHz;
+    else
+        ESP_LOGW(name, "Could not change the speed - continuing at %u Hz", currentSpeedHz);
 }
 
 
@@ -193,7 +227,8 @@ void Gate::startMovement(bool opening) {
     //    has, and that is the same value written on every start, so the movement is still
     //    correct. Refusing to move because of it would turn a harmless glitch into a gate
     //    that does not open.
-    if (vfd->setFrequency(kDefaultVfdFrequency) != ESP_OK)
+    currentSpeedHz = kSpeedFullHz;
+    if (vfd->setFrequency(currentSpeedHz) != ESP_OK)
         ESP_LOGW(name, "Could not set the VFD frequency - continuing with the one the drive already has");
 
     // 2. Start the motor, repeating the command if the drive does not confirm it.
@@ -225,10 +260,14 @@ void Gate::startMovement(bool opening) {
     // the moment the motor actually starts turning.
     // Note: lastPositionUpdateTimestampUs must be seeded here. It used to be assigned from
     // timestampStartUs BEFORE that was refreshed, i.e. from the previous movement, so the
-    // first updatePosition() integrated the whole idle time in between and slammed the
+    // first updateTravel() integrated the whole idle time in between and slammed the
     // position estimate to 0% / 100%.
     timestampStartUs = micros();
     lastPositionUpdateTimestampUs = timestampStartUs;
+    // The distance covered belongs to THIS movement only, and counts from the moment the
+    // motor starts - not from when the command arrived, which may have been a VFD startup
+    // delay earlier.
+    travelledDistanceMs = 0;
 
     if (opening) {
         state = MOVING_OPENING;
@@ -382,27 +421,26 @@ void Gate::pause() {
     wasOpeningBeforePause = movementHadAlreadyStarted ? (state == MOVING_OPENING) : nextDirection;
     pauseStartTimestampUs = micros();
 
-    // 2. work out how much run time is left before the motor is switched off.
-    //    If the motor never actually started (still waiting for the VFD), the full
-    //    target run time is still ahead - timestampStartUs would still refer to the
-    //    PREVIOUS movement here.
+    // 2. work out how much of the movement is left before the motor is switched off.
+    //    'Left' is a DISTANCE, so settle what has been covered and subtract it from the
+    //    target - which stays correct no matter what speed the movement was running at.
+    //    If the motor never actually started (still waiting for the VFD), the full target
+    //    is still ahead; travelledDistanceMs would still belong to the PREVIOUS movement.
     if (!movementHadAlreadyStarted) {
         remainingRunTimeAtPauseMs = targetRunTimeMs;
     } else {
-        const uint64_t elapsedSinceStartUs = pauseStartTimestampUs - timestampStartUs;
-        const uint64_t targetRunTimeUs = targetRunTimeMs * 1000;
-        remainingRunTimeAtPauseMs = (targetRunTimeUs > elapsedSinceStartUs)
-                                        ? (targetRunTimeUs - elapsedSinceStartUs) / 1000
+        updateTravel();
+        remainingRunTimeAtPauseMs = (targetRunTimeMs > travelledDistanceMs)
+                                        ? (targetRunTimeMs - travelledDistanceMs)
                                         : 0;
     }
 
-    // 3. record the position reached so far, then stop
-    updatePosition();  // Record accurate position before pausing
+    // 3. stop the motor
     stop();
     state = PAUSED_STATE;
     softStopRelay();
 
-    ESP_LOGW(name, "Gate PAUSED while %s. Remaining time to target: %llu ms",
+    ESP_LOGW(name, "Gate PAUSED while %s. Remaining distance to target: %llu ms",
              wasOpeningBeforePause ? "OPENING" : "CLOSING", remainingRunTimeAtPauseMs);
 }
 
@@ -467,7 +505,7 @@ void Gate::handle() {
     {
     case MOVING_OPENING:
     {
-        updatePosition();
+        updateTravel();
         // timeout
         if ((currentTimeUs - timestampStartUs) >= ((uint64_t)kMovementTimeoutMs * 1000))
         {
@@ -487,10 +525,11 @@ void Gate::handle() {
             state = IDLE_FULLY_OPEN;
             break;
         }
-        // target reached
-        else if ((currentTimeUs - timestampStartUs) >= targetRunTimeMs * 1000)
+        // target reached - compared against the DISTANCE covered, not the time elapsed,
+        // so a movement that ran slower than full speed still travels the same distance
+        else if (travelledDistanceMs >= targetRunTimeMs)
         {
-            ESP_LOGI(name, "Target run time reached (while opening).");
+            ESP_LOGI(name, "Target distance reached (while opening).");
             stop(false);
             state = IDLE_PARTIALLY_OPEN;
         }
@@ -498,7 +537,7 @@ void Gate::handle() {
     }
     case MOVING_CLOSING:
     {
-        updatePosition();
+        updateTravel();
         #ifdef LOG_VFD_CURRENT_WHEN_CLOSING
             float vfdCurrent = 0.0f;
             if (vfd->getCurrent(&vfdCurrent) == ESP_OK)
@@ -526,10 +565,10 @@ void Gate::handle() {
             state = IDLE_FULLY_CLOSED;
             break;
         }
-        // target reached
-        else if ((currentTimeUs - timestampStartUs) >= targetRunTimeMs * 1000)
+        // target reached - see the note in MOVING_OPENING
+        else if (travelledDistanceMs >= targetRunTimeMs)
         {
-            ESP_LOGI(name, "Target run time reached (while closing).");
+            ESP_LOGI(name, "Target distance reached (while closing).");
             stop(false);
             state = IDLE_PARTIALLY_OPEN;
         }
