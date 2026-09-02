@@ -242,6 +242,20 @@ long-press detection.
       a 4 s countdown the right numbers? All three are single constants at the top of
       `control.cpp`. 20 s of *clear* time may well feel long now that it only starts once
       the way is actually free — a lower value is the first thing to try.
+- [x] **A pending close is dropped once both gates reach the closed position.** Regular
+      occurrence near the closed end, where the leaf can bow into the beam or a low sun can
+      reach the sensor: the barrier stops the gate a few centimetres from shut, it coasts
+      into its end position, the barrier clears immediately — and the full ritual followed,
+      four seconds of countdown beeps announcing a movement and then a resume the gates
+      refuse because they are already closed. Checked before everything else in
+      `CLOSING_MOVEMENT_PAUSED`, so it also cuts a running countdown off mid-sequence.
+      Reads the limit switch **pins**, not the gate states, because a gate that rolled out
+      after being stopped is in `PAUSED_STATE`, which does not look at its limit switches at
+      all. Requires **both** gates — they are independent leaves, and one that has arrived
+      simply refuses its share of the resume.
+- [ ] **Possibly the same treatment for the opening direction**, if the equivalent ever
+      shows up. Nothing pauses an opening movement today (the barrier only stops closing),
+      so there is no path to it yet.
 - [ ] **Watch for:** the 8 s give-up raises a `BARRIER_BLOCKED_TOO_LONG` fault, so the LED
       blinks slowly afterwards. For an automatic close that may read as "something broke"
       rather than "somebody stayed in the gateway" — see whether it is useful or annoying.

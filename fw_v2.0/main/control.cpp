@@ -465,8 +465,34 @@ void controlTask(void *param)
             // note: the blinking LED for this state is driven by the indicator task,
             // requested once when the state was entered (StatusIndication::WAITING_FOR_BARRIER)
 
+            // --- nothing left to close ---
+            // Checked before everything else, including the countdown, because it makes the
+            // whole wait pointless whenever it becomes true.
+            //
+            // The gate is stopped by the barrier a few centimetres from shut - which happens
+            // by itself down there, where the leaf can bow into the beam or a low sun can
+            // reach the sensor - and then coasts the rest of the way into its end position.
+            // The barrier clears again immediately, so the full ritual follows: four seconds
+            // of accelerating countdown beeps announcing a movement, then a resume that the
+            // gates refuse because they are already closed. Nothing moves, and the only thing
+            // the user gets is the noise.
+            //
+            // Reading the limit switches rather than the gate states matters here: a gate
+            // that rolled out after being stopped is still in PAUSED_STATE, which does not
+            // look at its limit switches at all.
+            //
+            // Silent on purpose. The gates announce reaching the end position themselves
+            // (LIMIT_SWITCH_REACHED, from the state machine picking up the switch after the
+            // cancel), and this is the one path whose entire point is that it was noisy.
+            if (gatesAreAtClosedLimit())
+            {
+                ESP_LOGW(TAG_CTL, "Both gates reached the closed position while waiting for the barrier"
+                                  " => nothing left to close, dropping the pending movement");
+                gateSendCommand(GateCommandType::CANCEL);
+                ctlState = ControlState::IDLE;
+            }
             // --- cancel pending movement at any user input ---
-            if (input.anyButtonPressed)
+            else if (input.anyButtonPressed)
             {
                 ESP_LOGW(TAG_CTL, "User event received while waiting for barrier => cancel pending movement");
                 gateSendCommand(GateCommandType::CANCEL);

@@ -64,6 +64,9 @@ static std::atomic<bool> publishedPausedByLightBarrier{false};
 // Set when a movement command could not be carried out because a gate already reports that
 // end position - see Gate::getMovementWasRefused().
 static std::atomic<bool> publishedMovementWasRefused{false};
+// Set while both gates sit on their closed limit switch, whatever state they think they
+// are in - see Gate::isAtClosedLimit().
+static std::atomic<bool> publishedGatesAreAtClosedLimit{false};
 
 
 //===============================
@@ -157,6 +160,7 @@ static void publishGateState()
     publishedGatesAreIdle.store(gateA->getIsIdling() && gateB->getIsIdling());
     publishedAnyGateIsClosing.store(gateA->getIsClosing() || gateB->getIsClosing());
     publishedMovementWasRefused.store(gateA->getMovementWasRefused() || gateB->getMovementWasRefused());
+    publishedGatesAreAtClosedLimit.store(gateA->isAtClosedLimit() && gateB->isAtClosedLimit());
 }
 
 
@@ -293,6 +297,12 @@ bool gatesAreIdle()
 bool anyGateIsClosing()
 {
     return publishedAnyGateIsClosing.load();
+}
+
+
+bool gatesAreAtClosedLimit()
+{
+    return publishedGatesAreAtClosedLimit.load();
 }
 
 

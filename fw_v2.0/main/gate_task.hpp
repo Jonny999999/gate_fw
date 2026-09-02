@@ -52,6 +52,13 @@ bool gatesAreIdle();
 // Cleared by CONTINUE_CLOSING and CANCEL.
 bool gatesArePausedByLightBarrier();
 
+// True when BOTH gates are sitting on their closed limit switch.
+//
+// Both, because the gates are independent leaves: if only one has arrived, the other still
+// has to close and the movement is still worth resuming. Read from the pins rather than
+// from the gate states - see Gate::isAtClosedLimit().
+bool gatesAreAtClosedLimit();
+
 // True while at least one gate is running in the closing direction
 // (including while the VFD is still booting for a closing movement).
 bool anyGateIsClosing();

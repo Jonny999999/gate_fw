@@ -65,6 +65,20 @@ public:
     // on the learning members below.
     uint32_t effectiveFullTravelMs() const {return fullTravelMs;};
 
+    // Is this gate sitting on its closed limit switch, right now?
+    //
+    // Reads the pin, deliberately not the state machine. A gate that was stopped mid-close
+    // and then rolled the last few centimetres into the end position by its own momentum is
+    // in PAUSED_STATE, which does not look at the limit switches at all - so the state would
+    // say "paused somewhere" while the gate is physically shut. This answers the physical
+    // question, which is the one worth asking before restarting a closing movement.
+    //
+    // Free of side effects, unlike checkLimitSwitchClosedActive(), so it is safe to call
+    // from anywhere at any rate.
+    bool isAtClosedLimit() const {
+        return gpio_get_level(kLimitSwitchClosedGpio) == kLimitSwitchClosed_ActiveLevel;
+    };
+
     // Retrieve the current state.
     GateState getState() const {return state;};
     bool getIsIdling() const {return state == IDLE_FULLY_OPEN || state == IDLE_FULLY_CLOSED || state == IDLE_PARTIALLY_OPEN;};
