@@ -130,8 +130,7 @@ private:
 #if VARIABLE_SPEED_ENABLED
     static constexpr uint16_t kSlowestSpeedHz = kSpeedSlowHz;
 #else
-    // no profile, but an uncalibrated gate is still capped to the reference speed
-    static constexpr uint16_t kSlowestSpeedHz = std::min(kSpeedFullHz, kSpeedReferenceHz);
+    static constexpr uint16_t kSlowestSpeedHz = kSpeedReferenceHz;  // the only speed used
 #endif
 
     // Guaranteed gap between the target run time and the safety backstop.

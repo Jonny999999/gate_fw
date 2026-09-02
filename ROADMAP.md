@@ -404,10 +404,17 @@ The profile runs on the gate. Three things only showed up there:
       value was 8 s of pushing against the end stop.
 - [x] **An uncalibrated position plus a high speed is worse than no feature at all.** After
       a boot with the gate parked mid-rail the estimate can put the limit switch further
-      away than it is, so the gate arrives in the fast phase — at 75 Hz that is 1.9× the
-      speed it ran at for years, 3.5× the energy, into the stop this feature exists to
-      protect. Until a limit switch confirms the position the gate is capped at the
-      reference speed.
+      away than it is, so the gate arrives in the fast phase — 1.75× the speed it ran at for
+      years and 3× the energy, into the stop this feature exists to protect.
+      **The rule that came out of it:** where the profile is unsure it falls back to the
+      reference speed rather than guessing. Concretely, an unconfirmed position skips the
+      final approach entirely and the movement runs at 40 Hz — acting on a meaningless
+      distance is bad in both directions, arriving fast at one end and crawling the whole
+      rail at the other. The gentle start still applies, since it is measured from the start
+      of the movement and needs no position at all.
+      A partial opening is **not** an unconfirmed position: the gate left its limit switch
+      under power and the travel was integrated the whole way, so an "open completely"
+      afterwards runs at the full speed as it should.
 
 #### Calibration hardening (2026-09-01) — done
 Feeding measurements back into the gate's own behaviour is only safe with rules about what
@@ -433,6 +440,11 @@ may become one. Four, each closing a way the first version could learn something
       a stale stored value is discarded on the next boot.
 - [x] Every outcome logs which rule it hit and what the estimate did, so the log answers
       "why is the gate behaving like that" without a rebuild.
+- [x] **`VARIABLE_SPEED_ENABLED 0` gives back the old firmware, not a constant full speed.**
+      The single speed used is `VFD_FREQUENCY_REFERENCE_HZ`, so every distance constant means
+      literal milliseconds again and the behaviour is exactly what ran in production for
+      years. That is the switch to flip if the feature ever misbehaves; nothing else needs
+      changing with it.
 - [x] **Full speed capped at 70 Hz**, the drives' `-1.7-` ceiling. It had been set to 75, so
       the drives ran at 70 while the firmware counted distance for 75 — a ~7 % error that the
       measured travel absorbed into a consistently larger number, which is the worst kind:

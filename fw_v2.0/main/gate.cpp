@@ -215,35 +215,47 @@ void Gate::recomputeExpectedTravelDistance() {
 
 void Gate::updateSpeedProfile() {
 #if VARIABLE_SPEED_ENABLED
-    uint16_t desiredSpeedHz = kSpeedFullHz;
-
-    // 1. gentle start - the first stretch out of standstill
+    //--- 1. gentle start ---
+    // Measured from the start of THIS movement, so it needs no idea of where the gate is
+    // and is always valid. Every movement begins here.
     if (travelledDistanceMs() < kSlowStartDistanceMs) {
-        desiredSpeedHz = kSpeedSlowHz;
-    }
-    // 2. final approach - the last stretch before the movement is expected to end.
-    //    Written as '<' on the sum rather than a subtraction, so it is also true once the
-    //    gate has travelled PAST where the end was expected: if the limit switch is late or
-    //    missed entirely, the gate keeps creeping rather than accelerating back to full
-    //    speed into the limit stop. That is the safe direction for the estimate to be wrong
-    //    in, and the reason a rough position estimate is good enough here.
-    else if (expectedTravelDistanceMs < travelledDistanceMs() + kSlowApproachDistanceMs) {
-        desiredSpeedHz = kSpeedSlowHz;
+        setSpeed(kSpeedSlowHz);
+        return;
     }
 
-    // 3. and a cap while nothing has confirmed where the gate is.
-    //    The whole profile is timed against an estimated distance to the limit switch. When
-    //    that estimate is only a guess it can be wrong in the one direction that matters:
-    //    the gate reaches the end stop while still in the fast phase. Concretely, after a
-    //    reboot with the gate parked at ~70% an opening movement expects the switch at 50%
-    //    and meets it at full speed instead.
-    //    Running at the reference speed until a limit switch settles the question makes that
-    //    case no worse than the firmware that ran for years, rather than 1.9x faster into
-    //    the stop - which would be the opposite of what this feature is for.
-    if (!positionIsCalibrated)
-        desiredSpeedHz = std::min(desiredSpeedHz, kSpeedReferenceHz);
+    //--- 2. fallback while the position is only a guess ---
+    // The final approach below is timed against an estimated distance to the limit switch.
+    // Without a trustworthy position that distance is meaningless, and acting on it is bad
+    // in both directions: too late and the gate meets the end stop at the full speed, too
+    // early and it crawls the entire rail (which at the slow speed takes 1.6x as long as
+    // the movement should).
+    //
+    // So the profile gives up rather than guesses, and falls back to the reference speed -
+    // the one the gate ran at for years. That is the general rule for this feature: when it
+    // is unsure, it behaves like the firmware that did not have it.
+    //
+    // Only two things produce a guess, and neither survives a movement that reaches a limit
+    // switch: a boot with the gate parked mid-rail, and a gate pushed by hand while the
+    // motor was off. Note a partial opening is NOT one of them - the gate left its limit
+    // switch under power and the travel was integrated the whole way, so its position is
+    // still known and an "open completely" afterwards runs at the full speed as it should.
+    if (!positionIsCalibrated) {
+        setSpeed(kSpeedReferenceHz);
+        return;
+    }
 
-    setSpeed(desiredSpeedHz);
+    //--- 3. final approach ---
+    // Written as '<' on the sum rather than a subtraction, so it is also true once the gate
+    // has travelled PAST where the limit switch was expected: if the switch is late or
+    // missed entirely, the gate keeps creeping rather than accelerating back to full speed
+    // into the limit stop. That is the safe direction for the estimate to be wrong in.
+    if (expectedTravelDistanceMs < travelledDistanceMs() + kSlowApproachDistanceMs) {
+        setSpeed(kSpeedSlowHz);
+        return;
+    }
+
+    //--- 4. the middle of the movement ---
+    setSpeed(kSpeedFullHz);
 #endif
 }
 
@@ -501,7 +513,9 @@ void Gate::startMovement(bool opening) {
 #if VARIABLE_SPEED_ENABLED
     currentSpeedHz = kSpeedSlowHz;
 #else
-    currentSpeedHz = kSpeedFullHz;
+    // Feature off: one speed for the whole movement, and it is the REFERENCE speed - so
+    // "off" means the firmware as it was, not "as fast as the drives will go".
+    currentSpeedHz = kSpeedReferenceHz;
 #endif
     if (vfd->setFrequency(currentSpeedHz) != ESP_OK)
         ESP_LOGW(name, "Could not set the VFD frequency - continuing with the one the drive already has");
